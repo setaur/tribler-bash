@@ -1,6 +1,8 @@
 #!/bin/bash
 tribler_dir="$HOME/.Tribler"
 DEBUG=1
+
+
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
 DEBUG_COLOR_START="$(tput setaf 1 2>/dev/null)"
@@ -22,62 +24,21 @@ debug() {
         esac
         shift
     done
-    
-    echo "${debug_args[@]}" "${DEBUG_COLOR_START}${debug_date}${debug_function}$*${DEBUG_COLOR_END}" >&2
+
+    local s a sep
+    s="$((${#FUNCNAME[@]}-2))"
+    if [[ "$s" -gt 0 ]]; then
+	for ((a=1;a<=s;a++)); do
+	    sep="${sep}[ ]"
+	done
+    fi
+    echo "${debug_args[@]}" "${sep}${DEBUG_COLOR_START}${debug_date}${debug_function}$*${DEBUG_COLOR_END}" >&2
+    #echo "${debug_args[@]}" "${DEBUG_COLOR_START}${debug_date}${debug_function}$*${DEBUG_COLOR_END}" >&2
 }
 
 err() {
     [[ "${FUNCNAME[1]}" ]] && echo -n "{${FUNCNAME[1]}}: " >&2
     echo "$@" >&2
-}
-    
-
-jq_() { jq -e -r "$@"; }
-
-get_api_data() {
-    local version conf_file
-    version="${tribler_dir}/version_history.json"
-    version="$(cat "$version" | jq -e -r '.last_version' | sed 's#.0$##g' )"
-    conf_file="$(find "$tribler_dir/$version" -maxdepth 1 -type f -name triblerd.conf -print -quit )"
-    ls "$conf_file" >/dev/null || exit 44
-
-    (
-	cd "$DIR"
-	[[ -d 'bash_ini_parser' ]] || \
-	    git clone 'https://github.com/rudimeier/bash_ini_parser.git'
-    )
-    source "$DIR"/bash_ini_parser/read_ini.sh
-    read_ini "$conf_file"
-    debug -f "$INI__ALL_VARS"
-
-    default_hops="$INI__download_defaults__number_hops"
-    if [[ "$default_hops" -eq 0 ]]; then
-	echo "Hops=0!"
-	echo "not secure!"
-	exit 2
-    fi
-    
-    apikey="$INI__api__key"
-    if ! [[ "$apikey" ]]; then
-	echo "no apikey!" >&2
-	return 1
-    else
-	debug -f "apikey=$apikey"
-    fi
-    
-    apiport="$INI__api__http_port"
-    if ! [[ "$apiport" ]]; then
-	echo "no apiport!" >&2
-	return 2
-    else
-	debug -f "apiport=$apiport"
-    fi
-}
-
-curl_get_downloads() {
-    debug -f start
-    [[ "$apikey" ]] || get_api_data
-    curl -s -X GET -H "X-Api-Key: $apikey" http://localhost:"$apiport"/downloads
 }
 
 estimate_time() {
@@ -130,55 +91,161 @@ size_human_readable() {
 #	   --padding=-1 
 }
 
-get_downloads() {
-#shows info about downloaded item
-    local hash key
+jq_() { jq -e -r "$@"; }
+
+get_api_data() {
+    local version conf_file
+    version="${tribler_dir}/version_history.json"
+    version="$(cat "$version" | jq -e -r '.last_version' | sed 's#.0$##g' )"
+    conf_file="$(find "$tribler_dir/$version" -maxdepth 1 -type f -name triblerd.conf -print -quit )"
+    ls "$conf_file" >/dev/null || exit 44
+
+    (
+	cd "$DIR" || exit 1
+	[[ -d 'bash_ini_parser' ]] || \
+	    git clone 'https://github.com/rudimeier/bash_ini_parser.git'
+    )
+    source "$DIR"/bash_ini_parser/read_ini.sh || { err "Error running read_ini!"; exit 2; }
+    read_ini "$conf_file"
+    debug -f "$INI__ALL_VARS"
+
+    default_hops="$INI__download_defaults__number_hops"
+    if [[ "$default_hops" -eq 0 ]]; then
+	echo "Hops=0!"
+	echo "not secure!"
+	exit 2
+    fi
     
-    if ! [[ "$last_getinfo_unixtime" && ( "$(( $(date +'%s')-$last_getinfo_unixtime ))" -le 2 ) ]]; then
-    # skip this section if last check not long ago
-	download_data="$(curl_get_downloads )"
-	last_getinfo_unixtime="$(date +"%s" )"
-#	Hashes=[]
-	Hashes=( $(echo "$download_data" | jq -r -c ".downloads[].infohash") )
-	if ! [[ "${Hashes[*]}" ]]; then
-	    debug -f "No downloads active"
-	    return 0
+    apikey="$INI__api__key"
+    if ! [[ "$apikey" ]]; then
+	echo "no apikey!" >&2
+	return 1
+    else
+	debug -f "apikey=$apikey"
+    fi
+    
+    apiport="$INI__api__http_port"
+    if ! [[ "$apiport" ]]; then
+	echo "no apiport!" >&2
+	return 2
+    else
+	debug -f "apiport=$apiport"
+    fi
+}
+
+populate_basics() {
+    #if missing, populates basic vars from tribler config file or from tribler settings
+    local var
+    for var in "$apikey" "$default_hops" "$apiport"; do
+	if ! [[ "$var" ]]; then
+	    debug -f "some data missing, running get_api_data"
+	    get_api_data
+	    break
 	fi
-	mapfile -t Keys_download < <(echo "$download_data" | jq -r -c ".downloads[0] | keys | .[]")
-	debug -f "Keys_download=${Keys_download[@]}"
+    done
+
+    [[ "$default_destination_path" ]] && return 0
+    debug -f curl
+    tribler_settings_curl="$(curl -s -X GET -H "X-Api-Key: $apikey" http://localhost:"$apiport"/settings )" || return
+    default_destination_path="$( echo "$tribler_settings_curl" | jq_ .settings.download_defaults.saveas )"
+    debug -f "default_destination_path=$default_destination_path"
+    [[ "$default_destination_path" ]] || exit 1
+}
+
+curl_get_downloads() {
+    populate_basics
+    debug -f curl
+    curl -s -X GET -H "X-Api-Key: $apikey" http://localhost:"$apiport"/downloads
+}
+
+populate_downloads_data() {
+    debug ''; debug -f "start"
+    populate_basics
+
+#    [[ "$DEBUG" ]] && { set -x; SET_X=1; }
+    if ! [[ "$last_checktime" && ( "$(( $SECONDS-$last_checktime ))" -le 2 ) ]]; then
+        # skip this section if last check not long ago
+        download_data="$(curl_get_downloads )"
+        last_checktime="$SECONDS"
+        
+        Hashes_all=( $(echo "$download_data" | jq -r -c ".downloads[].infohash") )
+#        Hashes=( "${Hashes_all[@]}" )
+        if ! [[ "${Hashes_all[*]}" ]]; then
+            debug -f "No torrents active"
+            return 0
+        fi
+        mapfile -t Keys_download < <(echo "$download_data" | jq -r -c ".downloads[0] | keys | .[]")
+        debug -f "Keys_download=${Keys_download[*]}"
     fi
 
-    case "$1" in
-	'getinfo')
-	    declare -g -A Download_obj
-	    if ! [[ "$2" ]]; then
-		err "missing hash!"
-		return 1
-	    fi
-	    for key in "${Keys_download[@]}"; do
-		Download_obj["$key"]="$(echo "$download_data" | jq -r -c ".downloads[] | select(.infohash | contains(\"${2}\")) | .$key" )"
-		#debug -f "Download_obj[$key]=${Download_obj[$key]}"
-	    done
-	    ;;
-	'list')
-	    for hash in "${Hashes[@]}"; do
-		"${FUNCNAME[0]}" getinfo "$hash"
-		local name perc size size_downloaded speed_down speed_up status ratio eta hops
-		name="'${Download_obj[name]}'"
-		eta="$(estimate_time "${Download_obj[eta]}" )"
-		perc="$(echo "scale=2; ${Download_obj[progress]}*100/1" | bc -l )" #%
-		#size="$(echo "scale=2; ${Download_obj[size]}/(1024^2)" | bc -l )" #MB
-		#size="$(( ${Download_obj[size]}/(1024*1024) ))MB"
-		size="$(size_human_readable "${Download_obj[size]}" 2 )"
-		#size_downloaded="$(echo "${Download_obj[progress]}*${Download_obj[size]}/(1024^2)" | bc)" #MB
-		size_downloaded="$(echo "${Download_obj[progress]}*${Download_obj[size]}/1" | bc)"
-		size_downloaded="$(size_human_readable "$size_downloaded" 2 )"
-		speed_down="$(size_human_readable "${Download_obj[speed_down]}" )/s"
-		speed_up="$(size_human_readable "${Download_obj[speed_up]}" )/s"
-		status="$(echo "${Download_obj[status]}" | sed 's/^DLSTATUS_//' | tr '[:upper:]' '[:lower:]' )"
-		ratio="$(echo "${Download_obj[ratio]}*100/1" | bc )" #%
-		hops="${Download_obj[hops]}" #%
-		echo -e \
+    local hash associative_table_name key value
+
+    for hash in "${Hashes_all[@]}"; do
+
+        [[ "$hash" && "$hash" =~ ^[a-zA-Z_0-9]+$ ]] ||\
+            { err "empty or invalid chars in hash: '$hash'"; return 2; }
+	
+        associative_table_name="hash_${hash}"
+        declare -g -A "${associative_table_name}"
+	debug "declare -g -A \"${associative_table_name}\""
+
+        for key in "${Keys_download[@]}"; do
+	    value="$(echo "$download_data" | jq -r -c ".downloads[] | select(.infohash | contains(\"${hash}\")) | .$key" )"
+	    debug -f "declare \"${associative_table_name}\"[\"$key\"]=\"$value\""
+            declare -g "${associative_table_name}"["$key"]="$value"
+        done
+    done
+#    [[ "$SET_X" ]] && { set +x; unset SET_X; }
+    debug -f -e "end\n"
+}
+
+get_download_data() {
+    # parameters:
+    # $1 - infohash, $2 - key (from json, i.e.: name, eta, hops, speed_up etc.
+    # Show selected data from associative array hash_$INFOHASH
+    local hash key value associative_table_name associative_query
+#    debug ''; debug -f "start"
+    
+    hash="$1"; key="$2"
+    [[ "${Hashes_all[*]}" == *"${hash}"* ]] || { err "invalid hash '$hash'"; return 1; }
+    [[ "${Keys_download[*]}" == *"${key}"* ]] ||\
+        { err "invalid key '$key'. Available keys:\n${Keys_download[*]}"; return 1; }
+
+#    [[ "$DEBUG" ]] && set -x
+    associative_table_name="hash_${hash}"
+    associative_query="${associative_table_name}[${key}]"
+    value="${!associative_query}"
+
+    debug -f "$hash $key = '$value'"
+    echo "$value"
+#    [[ "$DEBUG" ]] && set +x
+#    debug -f -e 'end\n'
+}
+
+list_downloads() {
+    # shows chosen data about downloads from $Hashes array in human readable format
+    local hash name perc size size_downloaded speed_down speed_up status ratio eta hops
+
+    debug ''; debug -f "start"
+    
+    populate_downloads_data
+    
+    for hash in "${Hashes_all[@]}"; do
+
+        name="'$(get_download_data "$hash" name)'"
+        eta="$(estimate_time "$(get_download_data "$hash" eta)" )"
+        perc="$(echo "scale=2; $(get_download_data "$hash" progress)*100/1" | bc -l )" #%
+        #size="$(echo "scale=2; $(get_download_data "$hash" size)/(1024^2)" | bc -l )" #MB
+        #size="$(( $(get_download_data "$hash" size)/(1024*1024) ))MB"
+        size="$(size_human_readable "$(get_download_data "$hash" size)" 2 )"
+        size_downloaded="$(echo "$(get_download_data "$hash" progress)*$(get_download_data "$hash" size)/1" | bc)"
+        size_downloaded="$(size_human_readable "$size_downloaded" 2 )"
+        speed_down="$(size_human_readable "$(get_download_data "$hash" speed_down)" )/s"
+        speed_up="$(size_human_readable "$(get_download_data "$hash" speed_up)" )/s"
+        status="$(get_download_data "$hash" status | sed 's/^DLSTATUS_//' | tr '[:upper:]' '[:lower:]' )"
+        ratio="$(echo "$(get_download_data "$hash" ratio)*100/1" | bc )" #%
+        hops="$(get_download_data "$hash" hops)" #%
+        echo -e \
 "${hash}\t\
 ${name}\t\
 ${perc}%\t\
@@ -186,30 +253,20 @@ ${status}\t\
 [ ${size_downloaded}\t\
 /\t\
 ${size} ]\t\
-[ ↓${speed_down}\t\
-↑${speed_up} ]	\t\
+↓${speed_down}\t\
+↑${speed_up}\t\
 ${eta}\t\
 R:${ratio}%\t\
 H:${hops}"
-	    done | column -t -s $'\t'
-	    ;;
-    esac
-    
-    #jq -c ".downloads[] | select(.infohash | contains(\"$infohash\")) | .name"
-}
+        
+    done | column -t -s $'\t'
 
-get_default_destination_path() {
-    debug -f "start"
-    [[ "$apikey" ]] || get_api_data
-    default_destination_path="$(curl -X GET -H "X-Api-Key: $apikey" http://localhost:"$apiport"/settings )"
-    default_destination_path="$( echo "$default_destination_path" | jq_ .settings.download_defaults.saveas )"
-    debug -f "default_destination_path=$default_destination_path"
-    [[ "$default_destination_path" ]] || exit 1
-}
+    debug -e -f 'end\n'
+}    
 
 curl_put_download() {
-    debug -f 'start'
-    get_default_destination_path
+    populate_basics
+    debug -f curl
     curl -s -X PUT "http://localhost:$apiport/downloads" \
 	 -H "accept: application/json" \
 	 -H  "X-Api-Key: $apikey" \
@@ -218,6 +275,8 @@ curl_put_download() {
 }
 
 download() {
+    debug ''; debug -f "start"
+    populate_basics
     local curl_out first_key started
     [[ "$DEBUG" ]] && set -x
     curl_out="$(curl_put_download "$1" )"
@@ -236,21 +295,75 @@ download() {
 	err "no infohash!"
 	return 1
     fi
+    echo "$infohash - added."
+    debug -e -f "end\n"
 }
 
 select_hash() {
     # select specific hash, $1 - hash
-    [[ "$download_data" ]] || get_downloads
-    if ! [[ "${Hashes[*]}" == *"${1}"* ]]; then
-	err "Hash '$1' not in Tribler hashes!"
-	return 1
-    fi
-    Hashes=( "$1" )
+
+    debug ''; debug -f "start"
+
+    populate_downloads_data
+
+    local hash
+    for hash in "$@"; do
+	if ! [[ "${Hashes_all[*]}" == *"${hash}"* ]]; then
+	    err "Hash '$hash' not in Tribler hashes!"
+	    return 1
+	fi
+    done
+    Hashes+=( "$@" )
+
+    debug -e -f "end\n"
 }
+
+curl_change_download_state() {
+    #parameters: $1:infohash $2:state : resume/stop/recheck
     
+    populate_basics
+
+    debug -f curl
+    curl -s -X PATCH "http://localhost:$apiport/downloads/$1" \
+	 -H "accept: application/json" \
+	 -H  "X-Api-Key: $apikey" \
+	 -H  "Content-Type: application/json" \
+	 -d "{  \"state\": \"$2\"}"
+}
+
+change_download_state() {
+    # changest state of all downloads from array $Hash
+    # parameter: $1: resume/stop/recheck
+    # https://tribler.readthedocs.io/en/latest/restapi/downloads.html#
+    debug ''; debug -f "start"
+
+    populate_downloads_data
+    
+    local hash state
+    state="$1"
+
+    [[ "${Hashes[*]}" ]] || { err "Hash not selected!"; return 1; }
+    [[ "$state" ]] || { err "state needed!"; return 1; }
+
+    case "$state" in
+	start|resume) state=resume ;;
+	stop|pause) state=stop ;;
+	recheck) true ;;
+	*)
+	    err -e "Invalid state: '$state'\nCan be: start|resume,stop|pause,recheck"
+	    return 1
+	    ;;
+    esac
+
+    for hash in "${Hashes[@]}"; do
+	curl_change_download_state "$state"
+    done
+
+    debug -f -e 'end\n'
+}
 
 #get_api_data
 
-get_downloads list
+list_downloads
 
 [[ "$1" ]] && download "$1"
