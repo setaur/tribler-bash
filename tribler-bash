@@ -52,7 +52,7 @@ estimate_time() {
     
     if ! [[ "$t" =~ ^[0-9]+$ ]]; then
 	echo "'$t'"
-	return
+	return 1
     fi
     
     [[ "$t" -eq 0 ]] && echo "-" && return
@@ -117,8 +117,8 @@ get_api_data() {
 
     default_hops="$INI__download_defaults__number_hops"
     if [[ "$default_hops" -eq 0 ]]; then
-	echo "Hops=0!"
-	echo "not secure!"
+	err "Default hops=0!"
+	err "not secure!"
 	exit 2
     fi
     
@@ -175,22 +175,41 @@ populate_downloads_data() {
 
 #    [[ "$DEBUG" ]] && { set -x; SET_X=1; }
     if ! [[ "$last_checktime" && ( "$(( $SECONDS-$last_checktime ))" -le 2 ) ]]; then
+	debug -f "getting download data"
         # skip this section if last check not long ago
         download_data="$(curl_get_downloads )"
         last_checktime="$SECONDS"
-        
+
+	debug -f "processing download data"
+	debug -f "populating array Hashes_all"
         Hashes_all=( $(echo "$download_data" | jq -r -c ".downloads[].infohash") )
-#        Hashes=( "${Hashes_all[@]}" )
+	debug -f "Hashes_all: ${Hashes_all[*]}"
+
         if ! [[ "${Hashes_all[*]}" ]]; then
             debug -f "No torrents active"
             return 0
         fi
+
+	debug -f "Setting indexes"
+	declare -g -A Index
+	local i hash
+	i=1
+	for hash in "${Hashes_all[@]}"; do
+	    Index[$i]="$hash"
+	    debug -f "Index[$i]=$hash"
+	    i=$((i+1))
+	done
+
+	debug -f "Getting key names"
         mapfile -t Keys_download < <(echo "$download_data" | jq -r -c ".downloads[0] | keys | .[]")
         debug -f "Keys_download=${Keys_download[*]}"
+    else
+	debug -f "Last check not long time ago, skipping."
     fi
 
     local hash associative_table_name key value
 
+    debug -f "Populating associative arrays"
     for hash in "${Hashes_all[@]}"; do
 
         [[ "$hash" && "$hash" =~ ^[a-zA-Z_0-9]+$ ]] ||\
@@ -288,13 +307,14 @@ list() {
     debug ''; debug -f "start"
     populate_downloads_data
 
-    local hash name perc size size_downloaded speed_down speed_up status ratio eta hops
+    local hash name perc size size_downloaded speed_down speed_up status ratio eta hops index
 
     command -v numfmt >/dev/null || { err "not installed: numfmt !"; exit 1; }
 
     {
 	[[ "$show_headline" ]] && echo -e \
-"HASH\t\
+"#\t\
+HASH\t\
 NAME\t\
 SEEDS\t\
 PEERS\t\
@@ -311,6 +331,9 @@ RATIO\t\
 HOPS"
     
 	for hash in "${Hashes_all[@]}"; do
+	    for ((index=1;index<="${#Index[@]}";index++)); do
+		[[ "${Index[$index]}" == "$hash" ]] && break
+	    done
             name="'$(get_download_data "$hash" name)'"
             eta="$(estimate_time "$(get_download_data "$hash" eta)" )"
             perc="$(echo "scale=2; $(get_download_data "$hash" progress)*100/1" | bc -l )" #%
@@ -327,7 +350,8 @@ HOPS"
             ratio="$(echo "$(get_download_data "$hash" ratio)*100/1" | bc )" #%
             hops="$(get_download_data "$hash" hops)" #%
             echo -e \
-"${hash}\t\
+"${index}\t\
+${hash}\t\
 ${name}\t\
 ${seeds}\t\
 ${peers}\t\
@@ -385,18 +409,27 @@ add_torrent() {
 }
 
 select_torrent() {
-    # select specific hash, $1 - hash
+    # select specific torrent by index or hash, args: - hash|index
     debug ''; debug -f "start"
     populate_downloads_data
 
-    local hash
-    for hash in "$@"; do
-	if ! [[ " ${Hashes_all[*]} " == *" ${hash} "* ]]; then
-	    err "Hash '$hash' not in Tribler hashes!"
-	    return 1
+    local arg hash
+    
+    for arg in "$@"; do
+	if [[ "$arg" =~ ^[0-9]{1,6}$ ]]; then
+	    debug -f "Treat '$arg' as index"
+	    [[ "$arg" -ge 1 && "$arg" -le "${#Index[@]}" ]] || { err "Index:$arg out of range!"; exit 1; }
+	    hash="${Index[$arg]}"
+	else
+	    debug -f "Treat '$arg' as hash"
+	    hash="$arg"
+	    if ! [[ " ${Hashes_all[*]} " == *" ${hash} "* ]]; then
+		err "Hash '$hash' not in Tribler hashes!"
+		return 1
+	    fi
 	fi
+	Hashes+=( "$hash" )
     done
-    Hashes+=( "$@" )
 
     debug -e -f "end\n"
 }
@@ -517,10 +550,10 @@ Without any arguments - the same like 'list' command"
   remove-data INDEX|HASH [INDEX|HASH]...\t Remove chosen torrent(s) from tribler alongside with disk data.
   hops HOPS_NUMBER INDEX|HASH [INDEX|HASH]...\t Change hop number of chosen torrent(s).
   \t HOP_NUMBER can be integer in range 0 - 3. 0 - no anonymity, 3 - best anonymity.
-  field FIELD1[,FIELD2]... [INDEX|HASH]...\t Show specific data about chosen torrent(s) like name, eta, size, infohash.
+  show FIELD1[,FIELD2]... [INDEX|HASH]...\t Show specific data about chosen torrent(s) like name, eta, size, infohash.
   \t If no INDEX or INFOHASH is provided, then query all torrents. Parameter '--no-headline' disables headline.
   \t Multiple fields must be separated by single comma ','
-  field-all\t Show names of all fields. There must be at least one torrent in tribler for this command to run.
+  show-field-names\t Show names of all fields. There must be at least one torrent in tribler for this command to run.
   help\t Show this help." | column -s $'\t' -t
 echo -e \
 "
@@ -595,11 +628,11 @@ case "$1" in
 	help
 	;;
 
-    field-all)
+    show-field-names)
 	print_values --list-keys
 	;;
 
-    field)
+    show)
 	IFS=',' read -r -a Chosen_fields <<< "$2"
 	shift 2
 	if ! [[ "$1" ]]; then
