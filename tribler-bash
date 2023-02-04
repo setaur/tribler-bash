@@ -337,69 +337,87 @@ print_values() {
 
 list() {
     # shows chosen data about all Tribler downloads in human readable format
+    # if $1=full then shows more columns
     debug ''; debug -f "start"
     populate_downloads_data
 
-    local hash name perc size size_downloaded speed_down speed_up status ratio eta hops index
+    local LONG line hash name perc size size_downloaded speed_down speed_up status ratio eta hops index
 
     command -v numfmt >/dev/null || { err "not installed: numfmt !"; exit 1; }
 
+    [[ "$1" == full ]] && LONG=1
+
     {
-	[[ "$show_headline" ]] && echo -e \
-"#\t\
-HASH\t\
-NAME\t\
-SEEDS\t\
-PEERS\t\
-PROGRESS\t\
-STATUS\t\
-SIZE\t\
- \t\
- \t\
-SPEED\t\
- \t\
- \t\
-ETA\t\
-RATIO\t\
-HOPS"
+	if [[ "$show_headline" ]]; then
+	    line='#'
+	    
+	    [[ "$LONG" ]] && line="${line}\tINFOHASH"
+	    
+	    line="${line}\tNAME"
+	    
+	    line="${line}\tSEEDS\tPEERS"
+	    
+	    line="${line}\tPROGRESS"
+	    
+	    line="${line}\tSTATUS"
+	
+	    line="${line}\tSIZE\t \t "
+	
+	    line="${line}\tSPEED\t \t "
+
+	    line="${line}\tETA"
+
+	    [[ "$LONG" ]] && line="${line}\tRATIO"
+
+	    [[ "$LONG" ]] && line="${line}\tHOPS"
+
+	    echo -e "$line"
+	fi
     
 	for hash in "${Hashes_all[@]}"; do
 	    for ((index=1;index<="${#Index[@]}";index++)); do
 		[[ "${Index[$index]}" == "$hash" ]] && break
 	    done
+	    line="${index}"
+	    
+	    [[ "$LONG" ]] && line="${line}\t${hash}"
+	    
             name="'$(get_download_data "$hash" name)'"
-            eta="$(estimate_time "$(get_download_data "$hash" eta)" )"
-            perc="$(echo "scale=2; $(get_download_data "$hash" progress)*100/1" | bc -l )" #%
-            #size="$(echo "scale=2; $(get_download_data "$hash" size)/(1024^2)" | bc -l )" #MB
-            #size="$(( $(get_download_data "$hash" size)/(1024*1024) ))MB"
+	    line="${line}\t${name}"
+
 	    seeds="$(get_download_data "$hash" num_connected_seeds) ($(get_download_data "$hash" num_seeds))"
 	    peers="$(get_download_data "$hash" num_connected_peers) ($(get_download_data "$hash" num_peers))"
-            size="$(size_human_readable "$(get_download_data "$hash" size)" 2 )"
-            size_downloaded="$(echo "$(get_download_data "$hash" progress)*$(get_download_data "$hash" size)/1" | bc)"
+	    line="${line}\t${seeds}\t${peers}"
+
+	    perc="$(echo "scale=2; $(get_download_data "$hash" progress)*100/1" | bc -l )" #%
+	    line="${line}\t${perc}"
+	    
+	    status="$(get_download_data "$hash" status | sed 's/^DLSTATUS_//' | tr '[:upper:]' '[:lower:]' )"
+	    line="${line}\t${status}"
+
+	    size_downloaded="$(echo "$(get_download_data "$hash" progress)*$(get_download_data "$hash" size)/1" | bc)"
             size_downloaded="$(size_human_readable "$size_downloaded" 2 )"
-            speed_down="$(size_human_readable "$(get_download_data "$hash" speed_down)" )/s"
+	    size="$(size_human_readable "$(get_download_data "$hash" size)" 2 )"
+	    line="${line}\t[ ${size_downloaded}\t/\t${size} ]"
+
+	    speed_down="$(size_human_readable "$(get_download_data "$hash" speed_down)" )/s"
             speed_up="$(size_human_readable "$(get_download_data "$hash" speed_up)" )/s"
-            status="$(get_download_data "$hash" status | sed 's/^DLSTATUS_//' | tr '[:upper:]' '[:lower:]' )"
-            ratio="$(echo "$(get_download_data "$hash" ratio)*100/1" | bc )" #%
-            hops="$(get_download_data "$hash" hops)" #%
-            echo -e \
-"${index}\t\
-${hash}\t\
-${name}\t\
-${seeds}\t\
-${peers}\t\
-${perc}%\t\
-${status}\t\
-[ ${size_downloaded}\t\
-/\t\
-${size} ]\t\
-[ ↓${speed_down}\t\
-/\t\
-↑${speed_up} ]\t\
-${eta}\t\
-R:${ratio}%\t\
-H:${hops}"
-        
+	    line="${line}\t[ ↓${speed_down}\t/\t↑${speed_up} ]"
+	    
+            eta="$(estimate_time "$(get_download_data "$hash" eta)" )"
+	    line="${line}\t${eta}"
+	            
+            [[ "$LONG" ]] && {
+		ratio="$(echo "$(get_download_data "$hash" ratio)*100/1" | bc )" #%
+		line="${line}\t${ratio}"
+	    }
+	    
+            [[ "$LONG" ]] && {
+		hops="$(get_download_data "$hash" hops)" #%
+		line="${line}\t${hops}"
+	    }
+
+	    echo -e "$line"
 	done
     } | column -t -s $'\t'
 
@@ -536,7 +554,8 @@ Usage:
 COMMANDS:
 Without any arguments - the same as 'list' command"
     echo -e \
-"  list\t Show current Tribler torrents.
+"  list\t Show current Tribler torrents with some human readable data
+  list-full\t More extended view
  \t Parameter '--no-headline' disables headline. 
  \t ___
   start TORRENT_ID [TORRENT_ID]...\t Start downloading chosen torrent(s) 
@@ -567,7 +586,7 @@ echo -e \
 "
  TORRENT_ID is an index or infohash or a special keyword 'all', which will match all torrents. 
  Index is a first column of a 'list' command output. Infohash is a hash atributed by tribler 
- to a specific torrent. Can be viewed using i.e. command
+ to a specific torrent. Can be viewed using command 'list-full' or i.e.:
  \t '$0 show name,infohash all'
 
 Parameters:"
@@ -601,9 +620,9 @@ done
 
 debug "action=$1"
 case "$1" in
-    ''|list)
-	list
-	;;
+    ''|list) list ;;
+
+    list-full) list full ;;
     
     start|stop|pause|recheck)
 	action="$1"
