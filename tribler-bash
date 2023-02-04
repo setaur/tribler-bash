@@ -385,6 +385,44 @@ curl_put_download() {
 	 -d "{  \"destination\": \"${default_destination_path}\",  \"anon_hops\": ${default_hops},  \"safe_seeding\": true,  \"uri\": \"${1}\"}"
 }
 
+curl_tribler() {
+    # $1 - part of addres i.e http://localhost:$apiport/$1
+    # $2 - request type, i.e. GET PUT DELETE (curl -X GET)
+    # $3 - optional: json payload (curl -d "{ $3}" )
+    declare -a curl_cmd output ecode http_code
+    populate_basics
+    
+    curl_cmd+=( curl -m 60 -s -X "$2" -H "X-Api-Key: $apikey" -w "\t%{http_code}" )
+    curl_cmd+=( -H  "accept: application/json" )
+    [[ "$2" == PUT ]] && curl_cmd+=( -H  "Content-Type: application/json" )
+    [[ "$3" ]] && curl_cmd+=( -d "{ $3 }" )
+    curl_cmd+=( "http://localhost:{$apiport}/${1}" )
+    
+    debug -f "${curl_cmd[*]}"
+    output="$( "${curl_cmd[@]}" )"
+    ecode=$?
+    
+    if [[ "$ecode" != 0 ]]; then
+	err "CURL_ERROR_CODE:${ecode}"
+	return "$ecode"
+    elif ! [[ "$output" ]]; then
+	err "Error: Empty output!"
+	return 1
+    fi
+    
+    http_code="$(echo "$output" | cut -f 2 )"
+    output="$(echo "$output" | cut -f 1 )"
+
+    if [[ "$http_code" != 200 ]]; then
+	err "Error! HTTP RESPONSE: ${http_code}"
+	err "$output"
+	return 2
+    fi
+
+    echo -n "$output"
+fi
+	
+
 add_torrent() {
     debug ''; debug -f "start"
     populate_basics
