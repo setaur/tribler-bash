@@ -566,7 +566,7 @@ Without any arguments - the same as 'list' command"
   \t HOP_NUMBER can be integer in range 0 - 3.
  \t 0 - no anonymity, 3 - best anonymity.
  \t ___
-  show FIELD1[,FIELD2]... TORRENT_ID [TORRENT_ID]...\t Show specific data about chosen torrent(s).
+  show FIELD1[,FIELD2]... TORRENT_ID [TORRENT_ID]...\t Show specific raw data about chosen torrent(s).
  \t In example name, eta, size, infohash.
  \t Multiple fields must be separated by single comma ','
  \t Parameter '--no-headline' disables headline.
@@ -579,8 +579,8 @@ echo -e \
 "
  TORRENT_ID is an index or infohash or a special keyword 'all', which will match all torrents. 
  Index is a first column of a 'list' command output. Infohash is a hash atributed by tribler 
- to a specific torrent. Can be viewed using command i.e.
- \t '$0 show infohash,name'
+ to a specific torrent. Can be viewed using i.e. command
+ \t '$0 show name,infohash all'
 
 Parameters:"
 echo -e \
