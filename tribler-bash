@@ -1,8 +1,12 @@
 #!/bin/bash
+# Tribler API Docs:
+# https://tribler.readthedocs.io/en/latest/restapi/downloads.html#
+
 tribler_dir="$HOME/.Tribler"
-DEBUG=1
 
+show_headline=1
 
+set -o pipefail
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
 DEBUG_COLOR_START="$(tput setaf 1 2>/dev/null)"
@@ -11,7 +15,7 @@ DEBUG_COLOR_END="$(tput sgr 0 2>/dev/null)"
 debug() {
     #if variable DEBUG is set, then prints to stderr
     #can use standard echo parameters
-    #extra parameters: -d,-t - adds date; -f - adds parent function name
+    #extra parameters: -d|-t - adds date; -f - adds parent function name
     [[ "$DEBUG" ]] || return 0
     
     while [ $# -gt 0 ]; do
@@ -25,13 +29,13 @@ debug() {
         shift
     done
 
+    #how deep function is nested:
     local s a sep
     s="$((${#FUNCNAME[@]}-2))"
-    if [[ "$s" -gt 0 ]]; then
-	for ((a=1;a<=s;a++)); do
-	    sep="${sep}[ ]"
-	done
-    fi
+    for ((a=1;a<=s;a++)); do
+	sep="${sep}[ ]"
+    done
+
     echo "${debug_args[@]}" "${sep}${DEBUG_COLOR_START}${debug_date}${debug_function}$*${DEBUG_COLOR_END}" >&2
     #echo "${debug_args[@]}" "${DEBUG_COLOR_START}${debug_date}${debug_function}$*${DEBUG_COLOR_END}" >&2
 }
@@ -102,8 +106,10 @@ get_api_data() {
 
     (
 	cd "$DIR" || exit 1
-	[[ -d 'bash_ini_parser' ]] || \
-	    git clone 'https://github.com/rudimeier/bash_ini_parser.git'
+	if ! [[ -d 'bash_ini_parser' ]]; then
+	    echo "Downloading bash_ini_parser to parse tribler config file..."
+	    git clone 'https://github.com/rudimeier/bash_ini_parser.git' || exit
+	fi
     )
     source "$DIR"/bash_ini_parser/read_ini.sh || { err "Error running read_ini!"; exit 2; }
     read_ini "$conf_file"
@@ -155,10 +161,15 @@ populate_basics() {
 curl_get_downloads() {
     populate_basics
     debug -f curl
-    curl -s -X GET -H "X-Api-Key: $apikey" http://localhost:"$apiport"/downloads
+    curl -s -X GET \
+	 -H "X-Api-Key: $apikey" \
+	 -H  "accept: application/json" \
+	 http://localhost:"$apiport"/downloads
 }
 
 populate_downloads_data() {
+    #populate global vars and arrays with current data about Tribler downloads
+    
     debug ''; debug -f "start"
     populate_basics
 
@@ -202,14 +213,14 @@ populate_downloads_data() {
 get_download_data() {
     # parameters:
     # $1 - infohash, $2 - key (from json, i.e.: name, eta, hops, speed_up etc.
-    # Show selected data from associative array hash_$INFOHASH
+    # Show selected data from associative array 'hash_$INFOHASH[$key]'
     local hash key value associative_table_name associative_query
 #    debug ''; debug -f "start"
     
     hash="$1"; key="$2"
-    [[ "${Hashes_all[*]}" == *"${hash}"* ]] || { err "invalid hash '$hash'"; return 1; }
-    [[ "${Keys_download[*]}" == *"${key}"* ]] ||\
-        { err "invalid key '$key'. Available keys:\n${Keys_download[*]}"; return 1; }
+    [[ " ${Hashes_all[*]} " == *" ${hash} "* ]] || { err "invalid hash '$hash'"; return 1; }
+    [[ " ${Keys_download[*]} " == *" ${key} "* ]] ||\
+        { err -e "invalid key '$key'. Available keys:\n${Keys_download[*]}"; return 1; }
 
 #    [[ "$DEBUG" ]] && set -x
     associative_table_name="hash_${hash}"
@@ -222,44 +233,118 @@ get_download_data() {
 #    debug -f -e 'end\n'
 }
 
-list_downloads() {
-    # shows chosen data about downloads from $Hashes array in human readable format
+print_values() {
+    #print values of keys from json data on torrents from array $Hashes
+    #if $1 = '--list-keys'; then only lists all keys
+    #args: KEY1 [KEY2 [...] ]
+    debug ''; debug -f "start"
+    populate_basics
+    [[ "${Keys_download[*]}" ]] || populate_downloads_data
+
+    local key line hash value
+    
+    if [[ "$1" == '--list-keys' ]]; then
+	echo "${Keys_download[*]}"
+	return
+    elif ! [[ "${Hashes[*]}" ]]; then
+	debug -f "empty Hashes array!"
+	err "No torrents selected!"
+	exit 1
+    fi
+
+    {
+	#Header
+	if [[ "$show_headline" ]]; then
+	    for key in "$@"; do
+		if ! [[ " ${Keys_download[*]} " == *" ${key} "* ]]; then
+		    err -e "invalid key '$key'. Available keys:\n${Keys_download[*]}"
+		    exit 1
+		elif ! [[ "$line" ]]; then
+		    line="$key"
+		else
+		    line="${line}\t${key}"
+		fi
+	    done
+	    echo -e "${line}" | tr '[:lower:]' '[:upper:]'
+	fi
+	
+	for hash in "${Hashes[@]}"; do
+	    unset line    
+	    for key in "$@"; do
+		value="$(get_download_data "$hash" "$key")" || return 1
+	    	if ! [[ "$line" ]]; then
+		    line="$value"
+		else
+		    line="${line}\t${value}"
+		fi
+	    done
+	    echo -e "$line"
+	done
+    } | column -t -s $'\t'
+}
+
+list() {
+    # shows chosen data about all Tribler downloads in human readable format
+    debug ''; debug -f "start"
+    populate_downloads_data
+
     local hash name perc size size_downloaded speed_down speed_up status ratio eta hops
 
-    debug ''; debug -f "start"
-    
-    populate_downloads_data
-    
-    for hash in "${Hashes_all[@]}"; do
+    command -v numfmt >/dev/null || { err "not installed: numfmt !"; exit 1; }
 
-        name="'$(get_download_data "$hash" name)'"
-        eta="$(estimate_time "$(get_download_data "$hash" eta)" )"
-        perc="$(echo "scale=2; $(get_download_data "$hash" progress)*100/1" | bc -l )" #%
-        #size="$(echo "scale=2; $(get_download_data "$hash" size)/(1024^2)" | bc -l )" #MB
-        #size="$(( $(get_download_data "$hash" size)/(1024*1024) ))MB"
-        size="$(size_human_readable "$(get_download_data "$hash" size)" 2 )"
-        size_downloaded="$(echo "$(get_download_data "$hash" progress)*$(get_download_data "$hash" size)/1" | bc)"
-        size_downloaded="$(size_human_readable "$size_downloaded" 2 )"
-        speed_down="$(size_human_readable "$(get_download_data "$hash" speed_down)" )/s"
-        speed_up="$(size_human_readable "$(get_download_data "$hash" speed_up)" )/s"
-        status="$(get_download_data "$hash" status | sed 's/^DLSTATUS_//' | tr '[:upper:]' '[:lower:]' )"
-        ratio="$(echo "$(get_download_data "$hash" ratio)*100/1" | bc )" #%
-        hops="$(get_download_data "$hash" hops)" #%
-        echo -e \
+    {
+	[[ "$show_headline" ]] && echo -e \
+"HASH\t\
+NAME\t\
+SEEDS\t\
+PEERS\t\
+PROGRESS\t\
+STATUS\t\
+SIZE\t\
+ \t\
+ \t\
+SPEED\t\
+ \t\
+ \t\
+ETA\t\
+RATIO\t\
+HOPS"
+    
+	for hash in "${Hashes_all[@]}"; do
+            name="'$(get_download_data "$hash" name)'"
+            eta="$(estimate_time "$(get_download_data "$hash" eta)" )"
+            perc="$(echo "scale=2; $(get_download_data "$hash" progress)*100/1" | bc -l )" #%
+            #size="$(echo "scale=2; $(get_download_data "$hash" size)/(1024^2)" | bc -l )" #MB
+            #size="$(( $(get_download_data "$hash" size)/(1024*1024) ))MB"
+	    seeds="$(get_download_data "$hash" num_connected_seeds) ($(get_download_data "$hash" num_seeds))"
+	    peers="$(get_download_data "$hash" num_connected_peers) ($(get_download_data "$hash" num_peers))"
+            size="$(size_human_readable "$(get_download_data "$hash" size)" 2 )"
+            size_downloaded="$(echo "$(get_download_data "$hash" progress)*$(get_download_data "$hash" size)/1" | bc)"
+            size_downloaded="$(size_human_readable "$size_downloaded" 2 )"
+            speed_down="$(size_human_readable "$(get_download_data "$hash" speed_down)" )/s"
+            speed_up="$(size_human_readable "$(get_download_data "$hash" speed_up)" )/s"
+            status="$(get_download_data "$hash" status | sed 's/^DLSTATUS_//' | tr '[:upper:]' '[:lower:]' )"
+            ratio="$(echo "$(get_download_data "$hash" ratio)*100/1" | bc )" #%
+            hops="$(get_download_data "$hash" hops)" #%
+            echo -e \
 "${hash}\t\
 ${name}\t\
+${seeds}\t\
+${peers}\t\
 ${perc}%\t\
 ${status}\t\
 [ ${size_downloaded}\t\
 /\t\
 ${size} ]\t\
-↓${speed_down}\t\
-↑${speed_up}\t\
+[ ↓${speed_down}\t\
+/\t\
+↑${speed_up} ]\t\
 ${eta}\t\
 R:${ratio}%\t\
 H:${hops}"
         
-    done | column -t -s $'\t'
+	done
+    } | column -t -s $'\t'
 
     debug -e -f 'end\n'
 }    
@@ -274,7 +359,7 @@ curl_put_download() {
 	 -d "{  \"destination\": \"${default_destination_path}\",  \"anon_hops\": ${default_hops},  \"safe_seeding\": true,  \"uri\": \"${1}\"}"
 }
 
-download() {
+add_torrent() {
     debug ''; debug -f "start"
     populate_basics
     local curl_out first_key started
@@ -299,16 +384,14 @@ download() {
     debug -e -f "end\n"
 }
 
-select_hash() {
+select_torrent() {
     # select specific hash, $1 - hash
-
     debug ''; debug -f "start"
-
     populate_downloads_data
 
     local hash
     for hash in "$@"; do
-	if ! [[ "${Hashes_all[*]}" == *"${hash}"* ]]; then
+	if ! [[ " ${Hashes_all[*]} " == *" ${hash} "* ]]; then
 	    err "Hash '$hash' not in Tribler hashes!"
 	    return 1
 	fi
@@ -319,51 +402,219 @@ select_hash() {
 }
 
 curl_change_download_state() {
-    #parameters: $1:infohash $2:state : resume/stop/recheck
-    
+    #parameters: $1:infohash $2:payload    
     populate_basics
 
     debug -f curl
+
     curl -s -X PATCH "http://localhost:$apiport/downloads/$1" \
 	 -H "accept: application/json" \
 	 -H  "X-Api-Key: $apikey" \
 	 -H  "Content-Type: application/json" \
-	 -d "{  \"state\": \"$2\"}"
+	 -d "$2"
+
+#    curl -X PATCH "http://localhost:52194/downloads/APIKEEEEY" -H  "accept: application/json" -H  "X-Api-Key: APIKEEEYYY" -H  "Content-Type: application/json" -d "{  \"selected_files\": [    0  ],  \"anon_hops\": 0,  \"state\": \"string\"}"
 }
 
 change_download_state() {
     # changest state of all downloads from array $Hash
     # parameter: $1: resume/stop/recheck
-    # https://tribler.readthedocs.io/en/latest/restapi/downloads.html#
     debug ''; debug -f "start"
 
     populate_downloads_data
     
-    local hash state
-    state="$1"
+    local hash action payload
+    action="$1"
 
     [[ "${Hashes[*]}" ]] || { err "Hash not selected!"; return 1; }
-    [[ "$state" ]] || { err "state needed!"; return 1; }
+    [[ "$action" ]] || { err "action needed!"; return 1; }
 
-    case "$state" in
-	start|resume) state=resume ;;
-	stop|pause) state=stop ;;
-	recheck) true ;;
-	*)
-	    err -e "Invalid state: '$state'\nCan be: start|resume,stop|pause,recheck"
-	    return 1
-	    ;;
-    esac
+    while [[ "$#" -gt 0 ]]; do
+	case "$action" in
+	    hops)
+		hops="$2"
+		[[ "$hops" =~ ^[0-3]$ ]] || { err "Invalid hops='$hops'. Must be integer 0-3"; return 1; }
+		[[ "$hops" -eq 0 ]] && echo -e '\nHOPS=0 - NOT SECURE!\n'
+		shift
+		;;
+	    start|resume) state=resume ;;
+	    stop|pause) state=stop ;;
+	    recheck) state=recheck ;;
+	    *)
+		err -e "Invalid action: '$state'\nCan be: start|resume,stop|pause,recheck\n or hops HOPS_NUMBER"
+		return 1
+		;;
+	esac
+	shift
+    done
+
+    [[ "$state" ]] && payload=" \"state\": \"$2\" "
+    if [[ "$hops" ]]; then
+	[[ "$payload" ]] && payload="${payload}, "
+	payload="\"anon_hops\": $hops"
+    fi
+    payload="{ ${payload} }"
 
     for hash in "${Hashes[@]}"; do
-	curl_change_download_state "$state"
+	curl_change_download_state "$hash" "$payload"
     done
 
     debug -f -e 'end\n'
 }
 
-#get_api_data
+curl_remove() {
+    # removes torrent from Tribler
+    # parameters: $1:hash, if $2 exists, then remove data from disk
+    populate_basics
+    
+    local remove_data
+    if [[ "$2" ]]; then remove_data=true; else remove_data=false; fi
+    
+    debug -f curl
+    curl -s -X DELETE "http://localhost:$apiport/downloads/$1" \
+	 -H "accept: application/json" \
+	 -H  "X-Api-Key: $apikey" \
+	 -H  "Content-Type: application/json" \
+	 -d "{  \"remove_data\": $remove_data}"
 
-list_downloads
+    #    curl -X DELETE "http://localhost:52194/downloads/6d4795dee70aeb88e03e5336ca7c9fcf0a1e206d" -H  "accept: application/json" -H  "X-Api-Key: CENZORED" -H  "Content-Type: application/json" -d "{  \"remove_data\": true}"
+}
 
-[[ "$1" ]] && download "$1"
+remove_torrent() {
+    # removes all torrents from $Hashes array
+    # parameters: if $1=remove_data; then removes also data on disk
+    debug ''; debug -f "start"
+    populate_downloads_data
+
+    local remove_data
+    
+    [[ "${Hashes[*]}" ]] || { err "Hash not selected!"; return 1; }
+    [[ "$1" == remove_data ]] && remove_data="$1"
+    
+    
+    for hash in "${Hashes[@]}"; do
+	curl_remove "$hash" $remove_data
+    done
+    debug -f -e 'end\n'
+}
+
+help() {
+    echo -e \
+"tribler-bash - command line interface for Tribler torrent client
+\tProvides all basic functionalites needed for command line usage
+Usage:
+\t tribler-bash [PAR1]... COMMAND
+
+Commands:
+Without any arguments - the same like 'list' command"
+    echo -e \
+"  list\t Show current Tribler torrents. Parameter '--no-headline' disables headline.
+  start INDEX|HASH [INDEX|HASH]...\t Start downloading chosen by infohash or id torrent(s) 
+  stop,pause INDEX|HASH [ INDEX|HASH]...\t Stop downloading chosen by infohash or id torrent(s)
+  recheck INDEX|HASH [INDEX|HASH]...\t Recheck chosen torrent(s)
+  add LINK|MAGNETLINK\t Add and start download new torrent provided by MAGNETLINK or LINK to torrent file
+  remove INDEX|HASH [INDEX|HASH]...\t Remove chosen torrent(s) from tribler. 
+  remove-data INDEX|HASH [INDEX|HASH]...\t Remove chosen torrent(s) from tribler alongside with disk data.
+  hops HOPS_NUMBER INDEX|HASH [INDEX|HASH]...\t Change hop number of chosen torrent(s).
+  \t HOP_NUMBER can be integer in range 0 - 3. 0 - no anonymity, 3 - best anonymity.
+  field FIELD1[,FIELD2]... [INDEX|HASH]...\t Show specific data about chosen torrent(s) like name, eta, size, infohash.
+  \t If no INDEX or INFOHASH is provided, then query all torrents. Parameter '--no-headline' disables headline.
+  \t Multiple fields must be separated by single comma ','
+  field-all\t Show names of all fields. There must be at least one torrent in tribler for this command to run.
+  help\t Show this help." | column -s $'\t' -t
+echo -e \
+"
+Indexes and infohashes can be viewed in output of 'list' command.
+
+Parameters:"
+echo -e \
+"  -h, --help\t Show this help
+  --debug, -d\t Enable debug, verbose mode
+  --no-headline\t disables headline for 'list' and 'field' commands" | column -s $'\t' -t
+echo
+}
+
+while [[ $# -gt 0 ]]; do
+    debug "check if '$1' is parameter..."
+    case "$1" in
+        -h|--help) help; exit ;;
+        -d|--debug)
+	    DEBUG=1
+	    debug 'Debug mode'
+	    ;;
+        --no-headline)
+	    debug 'Disable headlines'
+	    unset show_headline ;;
+        --)  shift; break;;
+        -*)  help           
+             exit 1;;
+        *)
+	    debug 'no more parameters'
+	    break;;
+    esac
+    shift
+done
+
+debug "action=$1"
+case "$1" in
+    ''|list)
+	list
+	;;
+    
+    start|stop|pause|recheck)
+	action="$1"
+	shift
+	select_torrent "$@"
+	change_download_state "$action"
+	;;
+
+    hops)
+	hops="$2"
+	shift 2
+	select_torrent "$@"
+	change_download_state hops "$hops"
+	;;
+
+    add)
+	add_torrent "$2"
+	;;
+    
+    remove)
+	shift
+	select_torrent "$@"
+	remove_torrent
+	;;
+
+    remove-data)
+	shift
+	select_torrent "$@"
+	remove_torrent remove_data
+	;;
+
+    'help')
+	help
+	;;
+
+    field-all)
+	print_values --list-keys
+	;;
+
+    field)
+	IFS=',' read -r -a Chosen_fields <<< "$2"
+	shift 2
+	if ! [[ "$1" ]]; then
+	    debug "No torrent selected, selecting all"
+	    populate_downloads_data
+	    Hashes=( "${Hashes_all[@]}" )
+	else
+	    select_torrent "$@"
+	fi
+#	exit
+	print_values "${Chosen_fields[@]}"
+	;;
+    *)
+	err "Invalid action '$1'"
+	help
+	exit
+	;;
+esac
