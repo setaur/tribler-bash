@@ -558,7 +558,8 @@ Without any arguments - the same as 'list' command"
  \t Multiple fields must be separated by single comma ','
  \t Parameter '--no-headline' disables headline.
  \t ___
-  show-field-names\t Show names of all fields. There must be at least one
+  field-names\t Print names of all fields, which can be used 
+ \t in 'show' command. There must be at least one
  \t torrent in tribler for this command to run.
  \t ___
   help\t Show this help." | column -s $'\t' -t
@@ -573,7 +574,7 @@ Parameters:"
 echo -e \
 " -h, --help\t Show this help
  -d, --debug\t Enable debug, verbose mode
- -n, --no-headline\t disables headline for 'list' and 'field' commands" | column -s $'\t' -t
+ -n, --no-headline\t disables headline for 'list' and 'show' commands" | column -s $'\t' -t
 echo
 }
 
@@ -638,7 +639,7 @@ case "$1" in
 	help
 	;;
 
-    show-field-names)
+    field-names)
 	print_values --list-keys
 	;;
 
