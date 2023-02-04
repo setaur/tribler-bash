@@ -538,26 +538,41 @@ help() {
 Usage:
 \t tribler-bash [PAR1]... COMMAND
 
-Commands:
-Without any arguments - the same like 'list' command"
+COMMANDS:
+Without any arguments - the same as 'list' command"
     echo -e \
-"  list\t Show current Tribler torrents. Parameter '--no-headline' disables headline.
-  start INDEX|HASH [INDEX|HASH]...\t Start downloading chosen by infohash or id torrent(s) 
-  stop,pause INDEX|HASH [ INDEX|HASH]...\t Stop downloading chosen by infohash or id torrent(s)
-  recheck INDEX|HASH [INDEX|HASH]...\t Recheck chosen torrent(s)
-  add LINK|MAGNETLINK\t Add and start download new torrent provided by MAGNETLINK or LINK to torrent file
-  remove INDEX|HASH [INDEX|HASH]...\t Remove chosen torrent(s) from tribler. 
-  remove-data INDEX|HASH [INDEX|HASH]...\t Remove chosen torrent(s) from tribler alongside with disk data.
-  hops HOPS_NUMBER INDEX|HASH [INDEX|HASH]...\t Change hop number of chosen torrent(s).
-  \t HOP_NUMBER can be integer in range 0 - 3. 0 - no anonymity, 3 - best anonymity.
-  show FIELD1[,FIELD2]... [INDEX|HASH]...\t Show specific data about chosen torrent(s) like name, eta, size, infohash.
-  \t If no INDEX or INFOHASH is provided, then query all torrents. Parameter '--no-headline' disables headline.
-  \t Multiple fields must be separated by single comma ','
-  show-field-names\t Show names of all fields. There must be at least one torrent in tribler for this command to run.
+"  list\t Show current Tribler torrents.
+ \t Parameter '--no-headline' disables headline. 
+ \t ___
+  start TORRENT_ID [TORRENT_ID]...\t Start downloading chosen torrent(s) 
+  stop,pause TORRENT_ID [ TORRENT_ID]...\t Stop downloading chosen torrent(s)
+  recheck TORRENT_ID [TORRENT_ID]...\t Recheck chosen torrent(s)
+  add LINK|MAGNETLINK\t Add and start download new torrent provided 
+ \t by MAGNETLINK or LINK (or path) to torrent file
+ \t ___
+  remove TORRENT_ID [TORRENT_ID]...\t Remove chosen torrent(s) from tribler. 
+  remove-data TORRENT_ID [TORRENT_ID]...\t Remove chosen torrent(s) from tribler
+ \t  alongside with disk data.
+ \t ___
+  hops HOPS_NUMBER TORRENT_ID [TORRENT_ID]...\t Change hop number of chosen torrent(s).
+  \t HOP_NUMBER can be integer in range 0 - 3.
+ \t 0 - no anonymity, 3 - best anonymity.
+ \t ___
+  show FIELD1[,FIELD2]... [TORRENT_ID]...\t Show specific data about chosen torrent(s).
+ \t In example name, eta, size, infohash.
+ \t If no TORRENT_ID is provided, then query all torrents. 
+ \t Multiple fields must be separated by single comma ','
+ \t Parameter '--no-headline' disables headline.
+ \t ___
+  show-field-names\t Show names of all fields. There must be at least one
+ \t torrent in tribler for this command to run.
+ \t ___
   help\t Show this help." | column -s $'\t' -t
 echo -e \
 "
-Indexes and infohashes can be viewed in output of 'list' command.
+TORRENT_ID is an index or infohash. Index is a first column of a 'list' command output.
+Infohash is a hash atributed by tribler to a specific torrent. Can be viewed using command i.e.
+\t '$0 show infohash,name'
 
 Parameters:"
 echo -e \
