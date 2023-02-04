@@ -100,6 +100,7 @@ size_human_readable() {
 jq_() { jq -e -r "$@"; }
 
 get_api_data() {
+    #get needed data from tribler config file
     local version conf_file
     version="${tribler_dir}/version_history.json"
     version="$(cat "$version" | jq -e -r '.last_version' | sed 's#.0$##g' )"
@@ -141,6 +142,42 @@ get_api_data() {
     fi
 }
 
+curl_tribler() {
+    # $1 - part of addres i.e http://localhost:$apiport/$1
+    # $2 - request type, i.e. GET PUT DELETE (curl -X GET)
+    # $3 - optional: json payload (curl -d "$3" )
+    declare -a curl_cmd output ecode http_code
+    
+    curl_cmd+=( curl -m 60 -s -X "$2" -H "X-Api-Key: $apikey" -w "\t%{http_code}" )
+    curl_cmd+=( -H  "accept: application/json" )
+    [[ "$2" == PUT ]] && curl_cmd+=( -H  "Content-Type: application/json" )
+    [[ "$3" ]] && curl_cmd+=( -d "$3" )
+    curl_cmd+=( "http://localhost:{$apiport}/${1}" )
+    
+    debug -f "${curl_cmd[*]}"
+    output="$( "${curl_cmd[@]}" )"
+    ecode=$?
+    
+    if [[ "$ecode" != 0 ]]; then
+	err "CURL_ERROR_CODE:${ecode}"
+	return "$ecode"
+    elif ! [[ "$output" ]]; then
+	err "Error: Empty output!"
+	return 1
+    fi
+    
+    http_code="$(echo "$output" | cut -f 2 )"
+    output="$(echo "$output" | cut -f 1 )"
+
+    if [[ "$http_code" != 200 ]]; then
+	err "Error! HTTP RESPONSE: ${http_code}"
+	err "$output"
+	return 2
+    fi
+
+    echo -n "$output"
+}
+
 populate_basics() {
     #if missing, populates basic vars from tribler config file or from tribler settings
     local var
@@ -154,19 +191,11 @@ populate_basics() {
 
     [[ "$default_destination_path" ]] && return 0
     debug -f curl
-    tribler_settings_curl="$(curl -s -X GET -H "X-Api-Key: $apikey" http://localhost:"$apiport"/settings )" || return
+
+    tribler_settings_curl="$(curl_tribler settings GET )" || return
     default_destination_path="$( echo "$tribler_settings_curl" | jq_ .settings.download_defaults.saveas )"
     debug -f "default_destination_path=$default_destination_path"
     [[ "$default_destination_path" ]] || exit 1
-}
-
-curl_get_downloads() {
-    populate_basics
-    debug -f curl
-    curl -s -X GET \
-	 -H "X-Api-Key: $apikey" \
-	 -H  "accept: application/json" \
-	 http://localhost:"$apiport"/downloads
 }
 
 populate_downloads_data() {
@@ -179,7 +208,8 @@ populate_downloads_data() {
     if ! [[ "$last_checktime" && ( "$(( $SECONDS-$last_checktime ))" -le 2 ) ]]; then
 	debug -f "getting download data"
         # skip this section if last check not long ago
-        download_data="$(curl_get_downloads )"
+	
+        download_data="$(curl_tribler downloads GET)" || exit
         last_checktime="$SECONDS"
 
 	debug -f "processing download data"
@@ -274,7 +304,7 @@ print_values() {
     fi
 
     {
-	#Header
+	#Headline
 	if [[ "$show_headline" ]]; then
 	    for key in "$@"; do
 		if ! [[ " ${Keys_download[*]} " == *" ${key} "* ]]; then
@@ -288,7 +318,8 @@ print_values() {
 	    done
 	    echo -e "${line}" | tr '[:lower:]' '[:upper:]'
 	fi
-	
+
+	#values
 	for hash in "${Hashes[@]}"; do
 	    unset line    
 	    for key in "$@"; do
@@ -375,79 +406,6 @@ H:${hops}"
     debug -e -f 'end\n'
 }    
 
-curl_put_download() {
-    populate_basics
-    debug -f curl
-    curl -s -X PUT "http://localhost:$apiport/downloads" \
-	 -H "accept: application/json" \
-	 -H  "X-Api-Key: $apikey" \
-	 -H  "Content-Type: application/json" \
-	 -d "{  \"destination\": \"${default_destination_path}\",  \"anon_hops\": ${default_hops},  \"safe_seeding\": true,  \"uri\": \"${1}\"}"
-}
-
-curl_tribler() {
-    # $1 - part of addres i.e http://localhost:$apiport/$1
-    # $2 - request type, i.e. GET PUT DELETE (curl -X GET)
-    # $3 - optional: json payload (curl -d "{ $3}" )
-    declare -a curl_cmd output ecode http_code
-    populate_basics
-    
-    curl_cmd+=( curl -m 60 -s -X "$2" -H "X-Api-Key: $apikey" -w "\t%{http_code}" )
-    curl_cmd+=( -H  "accept: application/json" )
-    [[ "$2" == PUT ]] && curl_cmd+=( -H  "Content-Type: application/json" )
-    [[ "$3" ]] && curl_cmd+=( -d "{ $3 }" )
-    curl_cmd+=( "http://localhost:{$apiport}/${1}" )
-    
-    debug -f "${curl_cmd[*]}"
-    output="$( "${curl_cmd[@]}" )"
-    ecode=$?
-    
-    if [[ "$ecode" != 0 ]]; then
-	err "CURL_ERROR_CODE:${ecode}"
-	return "$ecode"
-    elif ! [[ "$output" ]]; then
-	err "Error: Empty output!"
-	return 1
-    fi
-    
-    http_code="$(echo "$output" | cut -f 2 )"
-    output="$(echo "$output" | cut -f 1 )"
-
-    if [[ "$http_code" != 200 ]]; then
-	err "Error! HTTP RESPONSE: ${http_code}"
-	err "$output"
-	return 2
-    fi
-
-    echo -n "$output"
-fi
-	
-
-add_torrent() {
-    debug ''; debug -f "start"
-    populate_basics
-    local curl_out first_key started
-    [[ "$DEBUG" ]] && set -x
-    curl_out="$(curl_put_download "$1" )"
-    first_key="$(echo "[${curl_out}]" | jq -n -e -r "inputs[] | keys[]" )"
-    [[ "$DEBUG" ]] && set +x
-    if [[ "$first_key" = error ]]; then
-	err -n "Error!"
-	echo "$curl_out" | jq_ ".${first_key}"
-	exit 1
-    fi
-    debug -f "curl_out=${curl_out}"
-    
-    started="$(echo "$curl_out" | jq_ '.started' )"
-    infohash="$(echo "$curl_out" | jq_ '.infohash' )"
-    if ! [[ "$infohash" ]]; then
-	err "no infohash!"
-	return 1
-    fi
-    echo "$infohash - added."
-    debug -e -f "end\n"
-}
-
 select_torrent() {
     # select specific torrent by index or hash, args: - hash|index
     debug ''; debug -f "start"
@@ -478,21 +436,6 @@ select_torrent() {
     done
 
     debug -e -f "end\n"
-}
-
-curl_change_download_state() {
-    #parameters: $1:infohash $2:payload    
-    populate_basics
-
-    debug -f curl
-
-    curl -s -X PATCH "http://localhost:$apiport/downloads/$1" \
-	 -H "accept: application/json" \
-	 -H  "X-Api-Key: $apikey" \
-	 -H  "Content-Type: application/json" \
-	 -d "$2"
-
-#    curl -X PATCH "http://localhost:52194/downloads/APIKEEEEY" -H  "accept: application/json" -H  "X-Api-Key: APIKEEEYYY" -H  "Content-Type: application/json" -d "{  \"selected_files\": [    0  ],  \"anon_hops\": 0,  \"state\": \"string\"}"
 }
 
 change_download_state() {
@@ -535,28 +478,29 @@ change_download_state() {
     payload="{ ${payload} }"
 
     for hash in "${Hashes[@]}"; do
-	curl_change_download_state "$hash" "$payload"
+	curl_tribler "downloads/$hash" PATCH "$payload"
     done
 
     debug -f -e 'end\n'
 }
 
-curl_remove() {
-    # removes torrent from Tribler
-    # parameters: $1:hash, if $2 exists, then remove data from disk
+add_torrent() {
+    debug ''; debug -f "start"
     populate_basics
-    
-    local remove_data
-    if [[ "$2" ]]; then remove_data=true; else remove_data=false; fi
-    
-    debug -f curl
-    curl -s -X DELETE "http://localhost:$apiport/downloads/$1" \
-	 -H "accept: application/json" \
-	 -H  "X-Api-Key: $apikey" \
-	 -H  "Content-Type: application/json" \
-	 -d "{  \"remove_data\": $remove_data}"
+    local curl_out infohash
 
-    #    curl -X DELETE "http://localhost:52194/downloads/6d4795dee70aeb88e03e5336ca7c9fcf0a1e206d" -H  "accept: application/json" -H  "X-Api-Key: CENZORED" -H  "Content-Type: application/json" -d "{  \"remove_data\": true}"
+    curl_out="$(curl_tribler downloads PUT \
+"{  \"destination\": \"${default_destination_path}\",  \
+\"anon_hops\": ${default_hops},  \
+\"safe_seeding\": true,  \
+\"uri\": \"${1}\"}" )" || exit
+
+    debug -f "$curl_out"
+        
+    infohash="$(echo "$curl_out" | jq_ '.infohash' )"
+    
+    echo -e "${infohash}\ttorrent added."
+    debug -e -f "end\n"
 }
 
 remove_torrent() {
@@ -568,11 +512,16 @@ remove_torrent() {
     local remove_data
     
     [[ "${Hashes[*]}" ]] || { err "Hash not selected!"; return 1; }
-    [[ "$1" == remove_data ]] && remove_data="$1"
-    
-    
+
+    if [[ "$1" == remove_data ]]; then
+	remove_data=true
+    else
+	remove_data=false
+    fi
+    debug -f "remove_data=$remove_data"
+	
     for hash in "${Hashes[@]}"; do
-	curl_remove "$hash" $remove_data
+	curl_tribler "downloads/$hash" DELETE "{  \"remove_data\": $remove_data}"
     done
     debug -f -e 'end\n'
 }
