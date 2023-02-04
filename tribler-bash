@@ -414,6 +414,12 @@ select_torrent() {
     populate_downloads_data
 
     local arg hash
+
+    if [[ $# == 1 && "$1" == 'all' ]]; then
+	debug -f "special keyword 'all', selecting all torrents"
+	Hashes=( "${Hashes_all[@]}" )
+	return 0
+    fi
     
     for arg in "$@"; do
 	if [[ "$arg" =~ ^[0-9]{1,6}$ ]]; then
@@ -570,15 +576,16 @@ Without any arguments - the same as 'list' command"
   help\t Show this help." | column -s $'\t' -t
 echo -e \
 "
-TORRENT_ID is an index or infohash. Index is a first column of a 'list' command output.
-Infohash is a hash atributed by tribler to a specific torrent. Can be viewed using command i.e.
+TORRENT_ID is an index or infohash or special keyword 'all, which will match all torrents. 
+Index is a first column of a 'list' command output. Infohash is a hash atributed by tribler 
+to a specific torrent. Can be viewed using command i.e.
 \t '$0 show infohash,name'
 
 Parameters:"
 echo -e \
-"  -h, --help\t Show this help
-  --debug, -d\t Enable debug, verbose mode
-  --no-headline\t disables headline for 'list' and 'field' commands" | column -s $'\t' -t
+" -h, --help\t Show this help
+  -d, --debug\t Enable debug, verbose mode
+  -n, --no-headline\t disables headline for 'list' and 'field' commands" | column -s $'\t' -t
 echo
 }
 
@@ -590,7 +597,7 @@ while [[ $# -gt 0 ]]; do
 	    DEBUG=1
 	    debug 'Debug mode'
 	    ;;
-        --no-headline)
+        -n|--no-headline)
 	    debug 'Disable headlines'
 	    unset show_headline ;;
         --)  shift; break;;
