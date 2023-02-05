@@ -1,13 +1,20 @@
 #!/bin/bash
+# Simple command line client for Tribler
+# The MIT License (MIT)
+# Copyright (c) 2023 setaur
+
 # Tribler API Docs:
-# https://tribler.readthedocs.io/en/latest/restapi/downloads.html#
+# https://tribler.readthedocs.io/en/latest/restapi/introduction.html
 
 tribler_dir="$HOME/.Tribler"
 
 show_headline=1
-
-set -o pipefail
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+set -o pipefail
+
+for app in jq curl numfmt; do
+    command -v "$app" >/dev/null | { echo "There is no $app installed!" >&2; exit 1; }
+done; unset app
 
 DEBUG_COLOR_START="$(tput setaf 1 2>/dev/null)"
 DEBUG_COLOR_END="$(tput sgr 0 2>/dev/null)"
@@ -166,7 +173,7 @@ get_api_data() {
 	case $yn in
             [Yy]* ) true ;;
             * )
-		err -e "Cannot parse tribler config file!\n"
+		err -e "Cannot parse tribler config file!\nRead CONNECTION section in help:\n"
 		help; exit 1
 		;;
 	esac
@@ -372,24 +379,15 @@ list() {
 	if [[ "$show_headline" ]]; then
 	    line='#'
 	    
-	    [[ "$LONG" ]] && line="${line}\tINFOHASH"
-	    
+	    [[ "$LONG" ]] && line="${line}\tINFOHASH"	    
 	    line="${line}\tNAME"
-	    
 	    line="${line}\tSEEDS\tPEERS"
-	    
 	    line="${line}\tPROGRESS"
-	    
 	    line="${line}\tSTATUS"
-	
 	    line="${line}\tSIZE\t \t "
-	
 	    line="${line}\tSPEED\t \t "
-
 	    line="${line}\tETA"
-
 	    [[ "$LONG" ]] && line="${line}\tRATIO"
-
 	    [[ "$LONG" ]] && line="${line}\tHOPS"
 
 	    echo -e "$line"
@@ -594,7 +592,7 @@ Without any arguments - the same as 'list' command"
  \t 0 - no anonymity, 3 - best anonymity.
  \t ___
   show FIELD1[,FIELD2]... TORRENT_ID [TORRENT_ID]...\t Show specific raw data about chosen torrent(s).
- \t In example name, eta, size, infohash.
+ \t In example name, eta, size, infohash in a tabulator separated table.
  \t Multiple fields must be separated by single comma ','
  \t Parameter '--no-headline' disables headline.
  \t ___
@@ -608,14 +606,27 @@ echo -e \
  TORRENT_ID is an index or infohash or a special keyword 'all', which will match all torrents. 
  Index is a first column of a 'list' command output. Infohash is a hash atributed by tribler 
  to a specific torrent. Can be viewed using command 'list-full' or i.e.:
- \t '$0 show name,infohash all'
+ \t '$0 show name,infohash all
 
-Parameters:"
+PARAMETERS:"
 echo -e \
 " -h, --help\t Show this help
  -d, --debug\t Enable debug, verbose mode
  -n, --no-headline\t disables headline for 'list' and 'show' commands" | column -s $'\t' -t
-echo
+echo -e "
+CONNECTION:
+ To connect to Tribler $(basename $0) uses Tribler REST API. For this reason it needs to know
+ Tribler API port and API Key. They can be provided via parameters '--api-key' '--api-port'.
+ If they are not provided via parameters, $(basename $0) will try to find tribler config 
+ file in $tribler_dir and read relevant values from it. This config file is in ini format,
+ so to read it $(basename $0) will ask and try to download tool bash_ini_parser from github 
+ into ${DIR}.
+
+RELEVANT LINKS:
+https://github.com/Tribler/tribler
+https://tribler.readthedocs.io/en/latest/restapi/introduction.html
+https://github.com/rudimeier/bash_ini_parser
+"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -675,7 +686,7 @@ case "$1" in
 	remove_torrent remove_data
 	;;
 
-    'help')
+    help)
 	help
 	;;
 
