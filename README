@@ -53,7 +53,7 @@ CONNECTION:
  If they are not provided via parameters, tribler-bash will try to find tribler config 
  file in ~/.Tribler and read relevant values from it. This config file is in ini format,
  so to read it tribler-bash will ask and try to download tool bash_ini_parser from github 
- into ~/skrypty/tribler-bash.
+ into script directory.
 
 RELEVANT LINKS:
 https://github.com/setaur/tribler-bash
