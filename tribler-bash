@@ -99,49 +99,6 @@ size_human_readable() {
 
 jq_() { jq -e -r "$@"; }
 
-get_api_data() {
-    #get needed data from tribler config file
-    local version conf_file
-    version="${tribler_dir}/version_history.json"
-    version="$(cat "$version" | jq -e -r '.last_version' | sed 's#.0$##g' )"
-    conf_file="$(find "$tribler_dir/$version" -maxdepth 1 -type f -name triblerd.conf -print -quit )"
-    ls "$conf_file" >/dev/null || exit 44
-
-    (
-	cd "$DIR" || exit 1
-	if ! [[ -d 'bash_ini_parser' ]]; then
-	    echo "Downloading bash_ini_parser to parse tribler config file..."
-	    git clone 'https://github.com/rudimeier/bash_ini_parser.git' || exit
-	fi
-    )
-    source "$DIR"/bash_ini_parser/read_ini.sh || { err "Error running read_ini!"; exit 2; }
-    read_ini "$conf_file"
-    debug -f "$INI__ALL_VARS"
-
-    default_hops="$INI__download_defaults__number_hops"
-    if [[ "$default_hops" -eq 0 ]]; then
-	err "Default hops=0!"
-	err "not secure!"
-	exit 2
-    fi
-    
-    apikey="$INI__api__key"
-    if ! [[ "$apikey" ]]; then
-	echo "no apikey!" >&2
-	return 1
-    else
-	debug -f "apikey=$apikey"
-    fi
-    
-    apiport="$INI__api__http_port"
-    if ! [[ "$apiport" ]]; then
-	echo "no apiport!" >&2
-	return 2
-    else
-	debug -f "apiport=$apiport"
-    fi
-}
-
 curl_tribler() {
     # $1 - part of addres i.e http://localhost:$apiport/$1
     # $2 - request type, i.e. GET PUT DELETE (curl -X GET)
@@ -154,7 +111,9 @@ curl_tribler() {
     [[ "$3" ]] && curl_cmd+=( -d "$3" )
     curl_cmd+=( "http://localhost:${apiport}/${1}" )
     
-    debug -f "${curl_cmd[*]}"
+    #debug -f "${curl_cmd[*]@Q}"
+    debug -f $'\n'$'\t'"$( printf "'%s' " "${curl_cmd[@]}" )"$'\n'
+
     output="$( "${curl_cmd[@]}" )"
     ecode=$?
     
@@ -179,23 +138,83 @@ curl_tribler() {
     echo -n "$output"
 }
 
+bash_ini_parser__github='https://github.com/rudimeier/bash_ini_parser.git'
+bash_ini_parser_path=''
+get_api_data() {
+    #get required data from tribler config file
+    local version conf_file yn var
+    debug -f "Start"
+    
+    version="${tribler_dir}/version_history.json"
+    [[ -f "$version" ]] || { ls "$version"; exit; }
+    version="$(cat "$version" | jq -e -r '.last_version' | sed 's#.0$##g' )"
+    [[ "$version" ]] || { err "Cannot determine Tribler version!"; exit 1; }
+    debug -f "Tribler version: '$version'"
+    
+    debug -f "Searching for config file..."
+    conf_file="$(find "$tribler_dir/$version" -maxdepth 1 -type f -name triblerd.conf -print -quit )"
+    ls "$conf_file" >/dev/null || exit 44
+    debug -f "Tribler config file found: '$conf_file'"
+
+    debug -f "Processing config file"
+    [[ "$bash_ini_parser__read_ini__path" ]] ||\
+	bash_ini_parser_path="${DIR}/bash_ini_parser"
+    if ! [[ -d "$bash_ini_parser_path" ]]; then 
+	err "To parse tribler config file, bash_ini_parser is required."
+
+	read -p "Download bash_ini_parser from ${bash_ini_parser__github} into $DIR ? (y/n) " yn
+	case $yn in
+            [Yy]* ) true ;;
+            * )
+		err -e "Cannot parse tribler config file!\n"
+		help; exit 1
+		;;
+	esac
+
+	debug -f "Downloading bash_ini_parser..."
+	(
+	    cd "$DIR" || exit 1
+	    git clone "$bash_ini_parser__github" || exit
+	) || exit
+	debug -f "downloaded."
+    fi
+	
+    source "${bash_ini_parser_path}/read_ini.sh" || { err "Error running read_ini!"; exit 2; }
+    debug -f "read_ini.sh from bash_ini_parser loaded"
+    debug -f "reading tribler config file"
+    read_ini "$conf_file"
+    debug -f "vars from config file: $INI__ALL_VARS"
+
+    apikey="$INI__api__key"
+    apiport="$INI__api__http_port"
+
+    for var in apikey apiport; do
+	[[ "${!var}" ]] || { err "$var empty!"; exit 1; }
+	debug -f "$var=${!var}"
+    done	
+}
+
 populate_basics() {
     #if missing, populates basic vars from tribler config file or from tribler settings
-    local var
-    for var in "$apikey" "$default_hops" "$apiport"; do
-	if ! [[ "$var" ]]; then
-	    debug -f "some data missing, running get_api_data"
-	    get_api_data
+    local var output
+    for var in apikey apiport; do
+	if ! [[ "${!var}" ]]; then
+	    debug -f "Variable '\$$var' missing, running get_api_data"
+	    get_api_data || return
 	    break
 	fi
     done
 
-    [[ "$default_destination_path" ]] && return 0
+    for var in default_destination_path default_hops; do
+	if ! [[ "${!var}" ]]; then
+	    [[ "$output" ]] || output="$(curl_tribler settings GET )" || return
+	    declare "$var"="$( echo "$output" | jq_ .settings.download_defaults.saveas )"
+	    debug -f "$var='${!var}'"
 
-    tribler_settings_curl="$(curl_tribler settings GET )" || return
-    default_destination_path="$( echo "$tribler_settings_curl" | jq_ .settings.download_defaults.saveas )"
-    debug -f "default_destination_path=$default_destination_path"
-    [[ "$default_destination_path" ]] || exit 1
+	    [[ "${!var}" ]] || { err "Cannot set '${var}'!"; exit 1; }
+	fi
+    done
+    
 }
 
 populate_downloads_data() {
