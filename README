@@ -1,0 +1,59 @@
+tribler-bash - command line interface for Tribler torrent client
+	Provides all basic functionalites needed for command line usage
+Usage:
+	 tribler-bash [PAR1]... COMMAND
+
+COMMANDS:
+Without any arguments - the same as 'list' command
+  list                                                 Show current Tribler torrents with some human readable data
+  list-full                                            More extended view
+                                                       Parameter '--no-headline' disables headline. 
+                                                       ___
+  start TORRENT_ID [TORRENT_ID]...                     Start downloading chosen torrent(s) 
+  stop,pause TORRENT_ID [ TORRENT_ID]...               Stop downloading chosen torrent(s)
+  recheck TORRENT_ID [TORRENT_ID]...                   Recheck chosen torrent(s)
+  add LINK|MAGNETLINK                                  Add and start download new torrent provided 
+                                                       by MAGNETLINK or LINK (or path) to torrent file
+                                                       ___
+  remove TORRENT_ID [TORRENT_ID]...                    Remove chosen torrent(s) from tribler. 
+  remove-data TORRENT_ID [TORRENT_ID]...               Remove chosen torrent(s) from tribler
+                                                        alongside with disk data.
+                                                       ___
+  hops HOPS_NUMBER TORRENT_ID [TORRENT_ID]...          Change hop number of chosen torrent(s).
+                                                       HOP_NUMBER can be integer in range 0 - 3.
+                                                       0 - no anonymity, 3 - best anonymity.
+                                                       ___
+  show FIELD1[,FIELD2]... TORRENT_ID [TORRENT_ID]...   Show specific raw data about chosen torrent(s).
+                                                       In example name, eta, size, infohash in a tabulator separated table.
+                                                       Multiple fields must be separated by single comma ','
+                                                       Parameter '--no-headline' disables headline.
+                                                       ___
+  field-names                                          Print names of all fields, which can be used 
+                                                       in 'show' command. There must be at least one
+                                                       torrent in tribler for this command to run.
+                                                       ___
+  help                                                 Show this help.
+
+ TORRENT_ID is an index or infohash or a special keyword 'all', which will match all torrents. 
+ Index is a first column of a 'list' command output. Infohash is a hash atributed by tribler 
+ to a specific torrent. Can be viewed using command 'list-full' or i.e.:
+ 	 './tribler-bash show name,infohash all
+
+PARAMETERS:
+ -h, --help          Show this help
+ -d, --debug         Enable debug, verbose mode
+ -n, --no-headline   disables headline for 'list' and 'show' commands
+
+CONNECTION:
+ To connect to Tribler tribler-bash uses Tribler REST API. For this reason it needs to know
+ Tribler API port and API Key. They can be provided via parameters '--api-key' '--api-port'.
+ If they are not provided via parameters, tribler-bash will try to find tribler config 
+ file in /home/bart/.Tribler and read relevant values from it. This config file is in ini format,
+ so to read it tribler-bash will ask and try to download tool bash_ini_parser from github 
+ into /home/bart/skrypty/tribler-bash.
+
+RELEVANT LINKS:
+https://github.com/Tribler/tribler
+https://tribler.readthedocs.io/en/latest/restapi/introduction.html
+https://github.com/rudimeier/bash_ini_parser
+
