@@ -568,10 +568,11 @@ help() {
 "tribler-bash - command line interface for Tribler torrent client
 \tProvides all basic functionalites needed for command line usage
 Usage:
-\t tribler-bash [PAR1]... COMMAND
+\t tribler-bash [PAR1]... [COMMAND]
 
-COMMANDS:
-Without any arguments - the same as 'list' command"
+Without any arguments - the same as 'list' command
+
+COMMANDS:"
     echo -e \
 "  list\t Show current Tribler torrents with some human readable data
   list-full\t More extended view

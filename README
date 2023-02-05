@@ -1,10 +1,11 @@
 tribler-bash - command line interface for Tribler torrent client
 	Provides all basic functionalites needed for command line usage
 Usage:
-	 tribler-bash [PAR1]... COMMAND
+	 tribler-bash [PAR1]... [COMMAND]
+
+Without any arguments - the same as 'list' command
 
 COMMANDS:
-Without any arguments - the same as 'list' command
   list                                                 Show current Tribler torrents with some human readable data
   list-full                                            More extended view
                                                        Parameter '--no-headline' disables headline. 
@@ -50,7 +51,7 @@ CONNECTION:
  To connect to Tribler tribler-bash uses Tribler REST API. For this reason it needs to know
  Tribler API port and API Key. They can be provided via parameters '--api-key' '--api-port'.
  If they are not provided via parameters, tribler-bash will try to find tribler config 
- file in ~/.Tribler/ and read relevant values from it. This config file is in ini format,
+ file in ~/.Tribler and read relevant values from it. This config file is in ini format,
  so to read it tribler-bash will ask and try to download tool bash_ini_parser from github 
  into ~/skrypty/tribler-bash.
 
