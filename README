@@ -43,6 +43,8 @@ PARAMETERS:
  -h, --help          Show this help
  -d, --debug         Enable debug, verbose mode
  -n, --no-headline   disables headline for 'list' and 'show' commands
+ --api-key APIKEY    Provide Tribler API Key
+ --api-port PORT     Provide Tribler API Port
 
 CONNECTION:
  To connect to Tribler tribler-bash uses Tribler REST API. For this reason it needs to know

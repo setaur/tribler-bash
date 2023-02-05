@@ -612,7 +612,9 @@ PARAMETERS:"
 echo -e \
 " -h, --help\t Show this help
  -d, --debug\t Enable debug, verbose mode
- -n, --no-headline\t disables headline for 'list' and 'show' commands" | column -s $'\t' -t
+ -n, --no-headline\t disables headline for 'list' and 'show' commands
+ --api-key APIKEY\t Provide Tribler API Key
+ --api-port PORT\t Provide Tribler API Port" | column -s $'\t' -t
 echo -e "
 CONNECTION:
  To connect to Tribler $(basename $0) uses Tribler REST API. For this reason it needs to know
@@ -641,6 +643,14 @@ while [[ $# -gt 0 ]]; do
         -n|--no-headline)
 	    debug 'Disable headlines'
 	    unset show_headline ;;
+	--api-key)
+	    apikey="$2"
+	    shift
+	    ;;
+	--api-port)
+	    apiport="$2"
+	    shift
+	    ;;
         --)  shift; break;;
         -*)  help           
              exit 1;;
