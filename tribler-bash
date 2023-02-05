@@ -592,8 +592,8 @@ Without any arguments - the same as 'list' command"
  \t 0 - no anonymity, 3 - best anonymity.
  \t ___
   show FIELD1[,FIELD2]... TORRENT_ID [TORRENT_ID]...\t Show specific raw data about chosen torrent(s).
- \t In example name, eta, size, infohash in a tabulator separated table.
- \t Multiple fields must be separated by single comma ','
+ \t In example name, eta, size, infohash in a tabulator separated
+ \t table. Multiple fields must be separated by single comma ','
  \t Parameter '--no-headline' disables headline.
  \t ___
   field-names\t Print names of all fields, which can be used 
