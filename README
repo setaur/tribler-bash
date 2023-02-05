@@ -53,6 +53,7 @@ CONNECTION:
  into /home/bart/skrypty/tribler-bash.
 
 RELEVANT LINKS:
+https://github.com/setaur/tribler-bash
 https://github.com/Tribler/tribler
 https://tribler.readthedocs.io/en/latest/restapi/introduction.html
 https://github.com/rudimeier/bash_ini_parser
