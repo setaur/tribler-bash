@@ -13,8 +13,8 @@ COMMANDS:
   start TORRENT_ID [TORRENT_ID]...                     Start downloading chosen torrent(s) 
   stop,pause TORRENT_ID [ TORRENT_ID]...               Stop downloading chosen torrent(s)
   recheck TORRENT_ID [TORRENT_ID]...                   Recheck chosen torrent(s)
-  add LINK|MAGNETLINK                                  Add and start download new torrent provided 
-                                                       by MAGNETLINK or LINK (or path) to torrent file
+  add LINK|MAGNETLINK [LINK|MAGNETLINK]...             Add and start download new torrent(s) provided 
+                                                       by MAGNETLINK or LINK (or path) to torrent file.
                                                        ___
   remove TORRENT_ID [TORRENT_ID]...                    Remove chosen torrent(s) from tribler. 
   remove-data TORRENT_ID [TORRENT_ID]...               Remove chosen torrent(s) from tribler
@@ -38,7 +38,7 @@ COMMANDS:
  TORRENT_ID is an index or infohash or a special keyword 'all', which will match all torrents. 
  Index is a first column of a 'list' command output. Infohash is a hash atributed by tribler 
  to a specific torrent. Can be viewed using command 'list-full' or i.e.:
- 	 './tribler-bash show name,infohash all
+ 	 'tribler-bash show name,infohash all
 
 PARAMETERS:
  -h, --help          Show this help
@@ -51,12 +51,12 @@ CONNECTION:
  To connect to Tribler tribler-bash uses Tribler REST API. For this reason it needs to know
  Tribler API port and API Key. They can be provided via parameters '--api-key' '--api-port'.
  If they are not provided via parameters, tribler-bash will try to find tribler config 
- file in ~/.Tribler and read relevant values from it. This config file is in ini format,
+ file in directory ~/.Tribler and read relevant values from it. This config file is in ini format,
  so to read it tribler-bash will ask and try to download tool bash_ini_parser from github 
  into script directory.
 
 RELEVANT LINKS:
-https://github.com/setaur/tribler-bash
+https://github.com/setautribler-bash
 https://github.com/Tribler/tribler
 https://tribler.readthedocs.io/en/latest/restapi/introduction.html
 https://github.com/rudimeier/bash_ini_parser

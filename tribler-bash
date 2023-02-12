@@ -682,7 +682,7 @@ CONNECTION:
  To connect to Tribler $(basename $0) uses Tribler REST API. For this reason it needs to know
  Tribler API port and API Key. They can be provided via parameters '--api-key' '--api-port'.
  If they are not provided via parameters, $(basename $0) will try to find tribler config 
- file in $tribler_dir and read relevant values from it. This config file is in ini format,
+ file in directory $tribler_dir and read relevant values from it. This config file is in ini format,
  so to read it $(basename $0) will ask and try to download tool bash_ini_parser from github 
  into script directory.
 
