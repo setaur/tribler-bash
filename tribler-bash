@@ -519,11 +519,25 @@ change_download_state() {
     fi
     payload="{ ${payload} }"
 
+    local rcode curl_tribler_rcode output
+    rcode=0
     for hash in "${Hashes[@]}"; do
-	curl_tribler "downloads/$hash" PATCH "$payload"
+	debug -f "processing $hash"
+	output="$( curl_tribler "downloads/$hash" PATCH "$payload" )"
+	curl_tribler_rcode=$?
+	if [[ "$curl_tribler_rcode" != 0 ]]; then
+	    rcode="$curl_tribler_rcode"
+	    debug -f "failed: $hash"
+	else
+	    if [[ "$(echo "$output" | jq_ '.modified')" == true ]]; then
+		debug -f "success: $hash"
+		echo "$hash"
+	    fi
+	fi
     done
 
     debug -f -e 'end\n'
+    return "$rcode"
 }
 
 add_torrent() {
@@ -561,11 +575,26 @@ remove_torrent() {
 	remove_data=false
     fi
     debug -f "remove_data=$remove_data"
-	
+
+    local rcode curl_tribler_rcode output
+    rcode=0
     for hash in "${Hashes[@]}"; do
-	curl_tribler "downloads/$hash" DELETE "{  \"remove_data\": $remove_data}"
+	debug -f "processing $hash"
+	output="$( curl_tribler "downloads/$hash" DELETE "{  \"remove_data\": $remove_data}" )"
+	curl_tribler_rcode=$?
+	if [[ "$curl_tribler_rcode" != 0 ]]; then
+	    rcode="$curl_tribler_rcode"
+	    debug -f "failed: $hash"
+	else
+	    if [[ "$(echo "$output" | jq_ '.modified')" == true ]]; then
+		debug -f "success: $hash"
+		echo "$hash"
+	    fi
+	fi
     done
+
     debug -f -e 'end\n'
+    return "$rcode"
 }
 
 help() {
