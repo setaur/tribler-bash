@@ -217,16 +217,21 @@ populate_basics() {
 	fi
     done
 
-    for var in default_destination_path default_hops; do
-	if ! [[ "${!var}" ]]; then
-	    [[ "$output" ]] || output="$(curl_tribler settings GET )" || exit
-	    declare "$var"="$( echo "$output" | jq_ .settings.download_defaults.saveas )"
-	    debug -f "$var='${!var}'"
-
-	    [[ "${!var}" ]] || { err "Cannot set '${var}'!"; exit 1; }
-	fi
-    done
-    
+    if ! [[ "$default_destination_path" ]]; then
+	[[ "$output" ]] || output="$(curl_tribler settings GET )" || exit
+	default_destination_path="$( echo "$output" | jq_ .settings.download_defaults.saveas )"
+	debug -f "default_destination_path=$default_destination_path"
+	
+	[[ "$default_destination_path" ]] || { err "Cannot set default_destination_path!"; exit 1; }
+    fi
+    if ! [[ "$default_hops" ]]; then
+	[[ "$output" ]] || output="$(curl_tribler settings GET )" || exit
+	default_hops="$( echo "$output" | jq_ .settings.download_defaults.number_hops )"
+	debug -f "default_hops=$default_hops"
+	
+	[[ "$default_hops" ]] || { err "Cannot set default_hops!"; exit 1; }
+    fi
+        
 }
 
 populate_downloads_data() {
@@ -544,6 +549,8 @@ add_torrent() {
     debug ''; debug -f "start"
     populate_basics
     local curl_out infohash
+
+    [[ "$default_hops" == 0 ]] && err "Warning: download not anonymous!"
 
     curl_out="$(curl_tribler downloads PUT \
 "{  \"destination\": \"${default_destination_path}\",  \
