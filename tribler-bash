@@ -548,22 +548,41 @@ change_download_state() {
 add_torrent() {
     debug ''; debug -f "start"
     populate_basics
-    local curl_out infohash
+    local rcode curl_tribler_rcode output url infohash
 
-    [[ "$default_hops" == 0 ]] && err "Warning: download not anonymous!"
-
-    curl_out="$(curl_tribler downloads PUT \
+    rcode=0
+    for url in "$@"; do
+	debug -f "processing $url"
+	output="$( curl_tribler downloads PUT \
 "{  \"destination\": \"${default_destination_path}\",  \
 \"anon_hops\": ${default_hops},  \
 \"safe_seeding\": true,  \
-\"uri\": \"${1}\"}" )" || exit
+\"uri\": \"${url}\"}" )"
+	curl_tribler_rcode=$?
+	if [[ "$curl_tribler_rcode" != 0 ]]; then
+	    rcode="$curl_tribler_rcode"
+	    debug -f "failed: $url"
+	else
+	    if [[ "$(echo "$output" | jq_ '.started')" == true ]]; then
+		infohash="$(echo "$output" | jq_ '.infohash')"
+		debug -f "success: started $infohash"
+		echo "$infohash"
 
-    debug -f "$curl_out"
-        
-    infohash="$(echo "$curl_out" | jq_ '.infohash' )"
-    
-    echo -e "${infohash}\ttorrent added."
-    debug -e -f "end\n"
+		#if [[ "$dont_start_new_torrent" ]]; then
+		#    debug -f "stopping new torrent"
+		#    Hashes=( "$infohash" )
+		#    change_download_state stop || err "Failed stopping $infohash !"
+		#fi
+		#NOT WORKING - if new torrent started but not changed state into download fast, it will not work :(
+	    else
+		debug -f "Failed: $url"
+		rcode=1
+	    fi
+	fi
+    done
+
+    debug -f -e 'end\n'
+    return "$rcode"
 }
 
 remove_torrent() {
@@ -587,13 +606,14 @@ remove_torrent() {
     rcode=0
     for hash in "${Hashes[@]}"; do
 	debug -f "processing $hash"
+
 	output="$( curl_tribler "downloads/$hash" DELETE "{  \"remove_data\": $remove_data}" )"
 	curl_tribler_rcode=$?
 	if [[ "$curl_tribler_rcode" != 0 ]]; then
 	    rcode="$curl_tribler_rcode"
 	    debug -f "failed: $hash"
 	else
-	    if [[ "$(echo "$output" | jq_ '.modified')" == true ]]; then
+	    if [[ "$(echo "$output" | jq_ '.removed')" == true ]]; then
 		debug -f "success: $hash"
 		echo "$hash"
 	    fi
@@ -622,8 +642,8 @@ COMMANDS:"
   start TORRENT_ID [TORRENT_ID]...\t Start downloading chosen torrent(s) 
   stop,pause TORRENT_ID [ TORRENT_ID]...\t Stop downloading chosen torrent(s)
   recheck TORRENT_ID [TORRENT_ID]...\t Recheck chosen torrent(s)
-  add LINK|MAGNETLINK\t Add and start download new torrent provided 
- \t by MAGNETLINK or LINK (or path) to torrent file
+  add LINK|MAGNETLINK [LINK|MAGNETLINK]...\t Add and start download new torrent(s) provided 
+ \t by MAGNETLINK or LINK (or path) to torrent file.
  \t ___
   remove TORRENT_ID [TORRENT_ID]...\t Remove chosen torrent(s) from tribler. 
   remove-data TORRENT_ID [TORRENT_ID]...\t Remove chosen torrent(s) from tribler
@@ -693,6 +713,9 @@ while [[ $# -gt 0 ]]; do
 	    apiport="$2"
 	    shift
 	    ;;
+#	--dont-start)
+#	    dont_start_new_torrent=1
+#	    ;;
         --)  shift; break;;
         -*)  help           
              exit 1;;
@@ -724,7 +747,8 @@ case "$1" in
 	;;
 
     add)
-	add_torrent "$2"
+	shift
+	add_torrent "$@"
 	;;
     
     remove)
