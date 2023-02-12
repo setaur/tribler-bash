@@ -110,6 +110,7 @@ curl_tribler() {
     # $1 - part of addres i.e http://localhost:$apiport/$1
     # $2 - request type, i.e. GET PUT DELETE (curl -X GET)
     # $3 - optional: json payload (curl -d "$3" )
+    local i
     declare -a curl_cmd output ecode http_code
     
     curl_cmd+=( curl -m 60 -s -X "$2" -H "X-Api-Key: $apikey" -w "\t%{http_code}" )
@@ -121,13 +122,17 @@ curl_tribler() {
     #debug -f "${curl_cmd[*]@Q}"
     debug -f $'\n'$'\t'"$( printf "'%s' " "${curl_cmd[@]}" )"$'\n'
 
-    output="$( "${curl_cmd[@]}" )"
-    ecode=$?
+    for ((i=0;i<3;i++)); do
+	output="$( "${curl_cmd[@]}" )"
+	ecode=$?
+	[[ "$ecode" == 0 ]] && break
+	sleep 0.5
+    done
     
     if [[ "$ecode" != 0 ]]; then
 	err "CURL_ERROR_CODE=${ecode}"
-	err "Is Tribler running?"
-	return "$ecode"
+	err "Cannot connect to Tribler Core. Is Tribler running?"
+	exit "$ecode"
     elif ! [[ "$output" ]]; then
 	err "Error: Empty output!"
 	return 1
@@ -207,14 +212,14 @@ populate_basics() {
     for var in apikey apiport; do
 	if ! [[ "${!var}" ]]; then
 	    debug -f "Variable '\$$var' missing, running get_api_data"
-	    get_api_data || return
+	    get_api_data || exit
 	    break
 	fi
     done
 
     for var in default_destination_path default_hops; do
 	if ! [[ "${!var}" ]]; then
-	    [[ "$output" ]] || output="$(curl_tribler settings GET )" || return
+	    [[ "$output" ]] || output="$(curl_tribler settings GET )" || exit
 	    declare "$var"="$( echo "$output" | jq_ .settings.download_defaults.saveas )"
 	    debug -f "$var='${!var}'"
 
