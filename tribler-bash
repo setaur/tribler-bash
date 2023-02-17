@@ -668,7 +668,7 @@ echo -e \
  TORRENT_ID is an index or infohash or a special keyword 'all', which will match all torrents. 
  Index is a first column of a 'list' command output. Infohash is a hash atributed by tribler 
  to a specific torrent. Can be viewed using command 'list-full' or i.e.:
- \t '$0 show name,infohash all
+ \t '$(basename $0) show name,infohash all
 
 PARAMETERS:"
 echo -e \
