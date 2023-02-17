@@ -261,17 +261,7 @@ populate_downloads_data() {
         return 0
     fi
 
-    debug -f "Setting indexes"
-    declare -g -A Index
-    local i hash
-    i=1
-    for hash in "${Hashes_all[@]}"; do
-	Index[$i]="$hash"
-	debug -f "Index[$i]=$hash"
-	i=$((i+1))
-    done
-
-    debug -f "Getting key names"
+    debug -f "Getting key names" #i.e. 'infohash', 'name', 'size'...
     mapfile -t Keys_download < <(echo "$download_data" | jq -r -c ".downloads[0] | keys | .[]")
     debug -f "Keys_download=${Keys_download[*]}"
     
@@ -295,6 +285,26 @@ populate_downloads_data() {
         done
 	debug ''
     done
+
+    debug -f "Populating indexes in order of creation time"
+    readarray -t Hashes_sorted_by_time_added < <(
+	for hash in "${Hashes_all[@]}"; do
+	    echo -e "${hash}\t$(get_download_data "$hash" time_added)"
+	done | sort -t $'\t' -n -k2 | cut -f1
+    )
+
+    debug -f "sorted hashes: ${Hashes_sorted_by_time_added[*]}"
+
+    declare -g -A Index
+    local i
+    i=1
+    for hash in "${Hashes_sorted_by_time_added[@]}"; do
+	Index[$i]="$hash"
+	debug -f "Index[$i]=$hash"
+	i=$((i+1))
+    done
+
+	
 #    [[ "$SET_X" ]] && { set +x; unset SET_X; }
     debug -f -e "end\n"
 }
@@ -403,10 +413,9 @@ list() {
 	    echo -e "$line"
 	fi
     
-	for hash in "${Hashes_all[@]}"; do
-	    for ((index=1;index<="${#Index[@]}";index++)); do
-		[[ "${Index[$index]}" == "$hash" ]] && break
-	    done
+	#for hash in "${Hashes_all[@]}"; do
+	for ((index=1;index<="${#Index[@]}";index++)); do
+	    hash="${Index[$index]}"
 	    line="${index}"
 	    
 	    [[ "$LONG" ]] && line="${line}\t${hash}"
