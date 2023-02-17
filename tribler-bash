@@ -390,12 +390,12 @@ list() {
 	    line='#'
 	    
 	    [[ "$LONG" ]] && line="${line}\tINFOHASH"	    
-	    line="${line}\tNAME"
+	    line="${line}\t  NAME"
 	    line="${line}\tSEEDS\tPEERS"
 	    line="${line}\tPROGRESS"
 	    line="${line}\tSTATUS"
-	    line="${line}\tSIZE\t \t "
-	    line="${line}\tSPEED\t \t "
+	    line="${line}\t  SIZE\t \t "
+	    line="${line}\t  SPEED\t \t "
 	    line="${line}\tETA"
 	    [[ "$LONG" ]] && line="${line}\tRATIO"
 	    [[ "$LONG" ]] && line="${line}\tHOPS"
