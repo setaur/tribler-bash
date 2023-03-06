@@ -380,7 +380,7 @@ print_values() {
 	    done
 	    echo -e "$line"
 	done
-    } | column -t -s $'\t'
+    }
 }
 
 list() {
