@@ -427,7 +427,7 @@ list() {
 	    peers="$(get_download_data "$hash" num_connected_peers) ($(get_download_data "$hash" num_peers))"
 	    line="${line}\t${seeds}\t${peers}"
 
-	    perc="$(echo "scale=2; $(get_download_data "$hash" progress)*100/1" | bc -l )" #%
+	    perc="$(echo "scale=2; $(get_download_data "$hash" progress)*100/1" | bc -l | awk '{printf "%.3f\n", $0}' )" #%
 	    line="${line}\t${perc}%"
 	    
 	    status="$(get_download_data "$hash" status | sed 's/^DLSTATUS_//' | tr '[:upper:]' '[:lower:]' )"
