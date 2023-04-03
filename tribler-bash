@@ -348,7 +348,7 @@ print_values() {
 	return
     elif ! [[ "${Hashes[*]}" ]]; then
 	debug -f "empty Hashes array!"
-	err "No torrents selected!"
+	#err "No torrents selected!"
 	exit 1
     fi
 
