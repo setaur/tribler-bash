@@ -106,7 +106,7 @@ size_human_readable() {
 }
 
 jq_() { jq -e -r "$@"; }
-
+    
 curl_tribler() {
     # $1 - part of addres i.e http://localhost:$apiport/$1
     # $2 - request type, i.e. GET PUT DELETE (curl -X GET)
@@ -634,6 +634,23 @@ remove_torrent() {
     return "$rcode"
 }
 
+shutdown() {
+    debug ''; debug -f "start"
+    populate_basics
+    local output signal
+    # curl -X PUT "http://localhost:52194/shutdown" -H  "accept: application/json" -H  "X-Api-Key: 83d44c7ad51070141ff9901547a304dc"
+    debug -f "Sending shutdown signal to Tribler Core..."
+    output="$( curl_tribler shutdown PUT )"
+    debug -f "$output"
+    
+    for signal in SIGTERM SIGINT SIGKILL; do
+	sleep 2
+	pgrep -i -a -f -x '^/usr.*tribler' >/dev/null 2>&1 || break
+	debug -f "Shutting down Tribler using $signal"
+	pkill --signal "$signal" -i -f -x '^/usr.*tribler'
+    done
+}
+
 help() {
     echo -e \
 "tribler-bash - command line interface for Tribler torrent client
@@ -671,6 +688,8 @@ COMMANDS:"
   field-names\t Print names of all fields, which can be used 
  \t in 'show' command. There must be at least one
  \t torrent in tribler for this command to run.
+ \t ___
+  shutdown\t Shutdown Tribler application
  \t ___
   help\t Show this help." | column -s $'\t' -t
 echo -e \
@@ -786,6 +805,9 @@ case "$1" in
 	shift 2
 	select_torrent "$@"
 	print_values "${Chosen_fields[@]}"
+	;;
+    shutdown)
+	shutdown
 	;;
     *)
 	err "Invalid action '$1'"
