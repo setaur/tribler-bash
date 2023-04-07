@@ -645,7 +645,7 @@ shutdown() {
     
     for signal in SIGTERM SIGINT SIGKILL; do
 	sleep 2
-	pgrep -i -a -f -x '^/usr.*tribler' >/dev/null 2>&1 || break
+	pgrep -i -a -f -x '^/usr/share.*tribler' >/dev/null 2>&1 || break
 	debug -f "Shutting down Tribler using $signal"
 	pkill --signal "$signal" -i -f -x '^/usr.*tribler'
     done
