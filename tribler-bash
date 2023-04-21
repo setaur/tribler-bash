@@ -241,13 +241,13 @@ populate_downloads_data() {
     debug ''; debug -f "start"
     populate_basics
 
+    # skip this section if last check not long ago
     if [[ "$last_checktime" && ( "$(( $SECONDS-$last_checktime ))" -le 2 ) ]]; then
 	debug -f "Last check not long time ago, skipping."
 	return 0
     fi
     
     debug -f "getting download data"
-    # skip this section if last check not long ago
 	
     download_data="$(curl_tribler downloads GET)" || exit
     last_checktime="$SECONDS"
