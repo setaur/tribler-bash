@@ -636,7 +636,7 @@ shutdown() {
     debug ''; debug -f "start"
     populate_basics
     local output signal
-    # curl -X PUT "http://localhost:52194/shutdown" -H  "accept: application/json" -H  "X-Api-Key: 83d44c7ad51070141ff9901547a304dc"
+
     debug -f "Sending shutdown signal to Tribler Core..."
     output="$( curl_tribler shutdown PUT )"
     debug -f "$output"
