@@ -352,36 +352,34 @@ print_values() {
 	exit 1
     fi
 
-    {
-	#Headline
-	if [[ "$show_headline" ]]; then
-	    for key in "$@"; do
-		if ! [[ " ${Keys_download[*]} " == *" ${key} "* ]]; then
-		    err -e "invalid key '$key'. Available keys:\n${Keys_download[*]}"
-		    exit 1
-		elif ! [[ "$line" ]]; then
-		    line="$key"
-		else
-		    line="${line}\t${key}"
-		fi
-	    done
-	    echo -e "${line}" | tr '[:lower:]' '[:upper:]'
-	fi
-
-	#values
-	for hash in "${Hashes[@]}"; do
-	    unset line    
-	    for key in "$@"; do
-		value="$(get_download_data "$hash" "$key")" || return 1
-	    	if ! [[ "$line" ]]; then
-		    line="$value"
-		else
-		    line="${line}\t${value}"
-		fi
-	    done
-	    echo -e "$line"
+    #Headline
+    if [[ "$show_headline" ]]; then
+	for key in "$@"; do
+	    if ! [[ " ${Keys_download[*]} " == *" ${key} "* ]]; then
+		err -e "invalid key '$key'. Available keys:\n${Keys_download[*]}"
+		exit 1
+	    elif ! [[ "$line" ]]; then
+		line="$key"
+	    else
+		line="${line}\t${key}"
+	    fi
 	done
-    }
+	echo -e "${line}" | tr '[:lower:]' '[:upper:]'
+    fi
+    
+    #values
+    for hash in "${Hashes[@]}"; do
+	unset line    
+	for key in "$@"; do
+	    value="$(get_download_data "$hash" "$key")" || return 1
+	    if ! [[ "$line" ]]; then
+		line="$value"
+	    else
+		line="${line}\t${value}"
+	    fi
+	done
+	echo -e "$line"
+    done
 }
 
 list() {
