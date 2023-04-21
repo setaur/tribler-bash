@@ -111,8 +111,8 @@ curl_tribler() {
     # $1 - part of addres i.e http://localhost:$apiport/$1
     # $2 - request type, i.e. GET PUT DELETE (curl -X GET)
     # $3 - optional: json payload (curl -d "$3" )
-    local i
-    declare -a curl_cmd output ecode http_code
+    local i output ecode http_code
+    declare -a curl_cmd
     
     curl_cmd+=( curl -m 60 -s -X "$2" -H "X-Api-Key: $apikey" -w "\t%{http_code}" )
     curl_cmd+=( -H  "accept: application/json" )

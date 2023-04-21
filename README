@@ -33,6 +33,8 @@ COMMANDS:
                                                        in 'show' command. There must be at least one
                                                        torrent in tribler for this command to run.
                                                        ___
+  shutdown                                             Shutdown Tribler application
+                                                       ___
   help                                                 Show this help.
 
  TORRENT_ID is an index or infohash or a special keyword 'all', which will match all torrents. 
