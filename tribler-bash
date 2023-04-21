@@ -101,7 +101,7 @@ size_human_readable() {
     numfmt --to=iec-i \
 	   --suffix=B \
 	   --format=" %.${digits}f" \
-	   --round="${round}" "${1}" \
+	   --round="${round}" "${1}"
 #	   --padding=-1 
 }
 
