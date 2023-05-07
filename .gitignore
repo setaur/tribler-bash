@@ -1,4 +1,6 @@
 *~
+.gitignore
 bash_ini_parser/
 rozne/
 deploy.sh
+remove-finished-and-notify
